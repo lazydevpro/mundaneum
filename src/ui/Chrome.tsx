@@ -3,7 +3,7 @@ import { liveCards, useBoard } from '../store'
 import { agentMark } from '../agents/identity'
 import type { WebMcpStatus } from '../mcp/webmcp'
 import { applyArrangement } from '../engine/engine'
-import type { Arrangement, CardStyle } from '../types'
+import type { Arrangement, CardStyle, ThemeName } from '../types'
 import { Icon } from './icons'
 import { WebMcpPill } from './ToolsPanel'
 
@@ -62,6 +62,13 @@ export function StatusLine({ webmcp }: { webmcp: WebMcpStatus }) {
   )
 }
 
+const THEMES: Array<[ThemeName, string]> = [
+  ['mint', 'mint'],
+  ['paper', 'paper'],
+  ['slate', 'slate'],
+  ['ink', 'ink'],
+]
+
 const ARRANGEMENTS: Array<[Arrangement, string]> = [
   ['clusters', 'clusters'],
   ['masonry', 'masonry'],
@@ -112,6 +119,21 @@ export function CornerControls() {
         </button>
         {open && (
           <div className="popover">
+            <div className="head">theme</div>
+            <div className="theme-row">
+              {THEMES.map(([name, label]) => (
+                <button
+                  key={name}
+                  className={'swatch' + ((prefs.theme ?? 'mint') === name ? ' on' : '')}
+                  data-swatch={name}
+                  title={label}
+                  onClick={() => useBoard.getState().setPrefs({ theme: name })}
+                >
+                  <span />
+                </button>
+              ))}
+            </div>
+            <div className="sep" />
             <div className="head">style</div>
             {(
               [

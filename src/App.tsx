@@ -35,7 +35,14 @@ export default function App() {
   const [modal, setModal] = useState<ModalKind>(null)
   const [webmcp, setWebmcp] = useState<WebMcpStatus>('unavailable')
   const loaded = useBoard((s) => s.loaded)
+  const theme = useBoard((s) => s.prefs.theme)
   const isCapture = hashFlag('capture') === '1'
+
+  // The palette lives on the root element so every layer — canvas, modals,
+  // and the sandboxed sketch/model captures — reads the same tokens.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme ?? 'mint'
+  }, [theme])
 
   useEffect(() => {
     registerBoardTools()

@@ -101,7 +101,12 @@ export interface Persisted {
   prefs?: ViewPrefs
 }
 
-const DEFAULT_PREFS: ViewPrefs = { style: 'pure', arrangement: 'clusters', toolbar: 'hidden' }
+const DEFAULT_PREFS: ViewPrefs = {
+  theme: 'mint',
+  style: 'pure',
+  arrangement: 'clusters',
+  toolbar: 'hidden',
+}
 
 /** New cards land near the current viewport center; the canvas registers this. */
 export const dropTarget: { current: () => XY } = {

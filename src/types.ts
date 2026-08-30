@@ -109,10 +109,13 @@ export interface AgentToolDef {
   by: string
 }
 
+export type ThemeName = 'mint' | 'paper' | 'slate' | 'ink'
+
 export type CardStyle = 'pure' | 'cards'
 export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column' | 'tree'
 
 export interface ViewPrefs {
+  theme: ThemeName
   style: CardStyle
   arrangement: Arrangement
   /** pinned = the whiteboard feel: the tool rail is always on screen. */

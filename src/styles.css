@@ -1,6 +1,55 @@
-/* Mundaneum — quiet archival surface. Almost no chrome; the board is the UI. */
+/* Mundaneum — a quiet surface. Almost no chrome; the board is the UI.
+ *
+ * Every theme names the same tokens, and each defines a light and a dark
+ * palette so the board still follows the system. A theme block is written
+ * with [data-theme] so it outranks the default — which means each theme
+ * must supply its own dark half, or the default's would never win it back.
+ */
 
 :root {
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------- mint (default) ---------- */
+
+:root,
+:root[data-theme='mint'] {
+  --paper: #f1f7f3;
+  --card: #ffffff;
+  --ink: #14201a;
+  --ink-soft: #4a5f54;
+  --faint: #8aa398;
+  --line: #dbe9e1;
+  --line-strong: #b7cfc2;
+  --accent: #1f9d6b;
+  --amber: #9c7412;
+  --shadow: 0 1px 2px rgba(16, 48, 34, 0.05), 0 6px 18px rgba(16, 48, 34, 0.06);
+  --shadow-lift: 0 2px 6px rgba(16, 48, 34, 0.09), 0 14px 34px rgba(16, 48, 34, 0.12);
+  --dot: rgba(20, 60, 44, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  :root[data-theme='mint'] {
+    --paper: #0d1512;
+    --card: #14201b;
+    --ink: #e2f0e9;
+    --ink-soft: #a2b8ac;
+    --faint: #6a8177;
+    --line: #22322b;
+    --line-strong: #35483f;
+    --accent: #4ed6a0;
+    --amber: #d0a13a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(0, 0, 0, 0.5);
+    --dot: rgba(226, 240, 233, 0.1);
+  }
+}
+
+/* ---------- paper: the archival original ---------- */
+
+:root[data-theme='paper'] {
   --paper: #f2efe7;
   --card: #fffdf7;
   --ink: #201d1a;
@@ -13,12 +62,10 @@
   --shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 6px 18px rgba(40, 30, 10, 0.05);
   --shadow-lift: 0 2px 6px rgba(40, 30, 10, 0.1), 0 14px 34px rgba(40, 30, 10, 0.12);
   --dot: rgba(32, 29, 26, 0.13);
-  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme='paper'] {
     --paper: #131211;
     --card: #1d1b18;
     --ink: #e9e4da;
@@ -31,6 +78,74 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
     --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(0, 0, 0, 0.5);
     --dot: rgba(233, 228, 218, 0.1);
+  }
+}
+
+/* ---------- slate: cool and neutral ---------- */
+
+:root[data-theme='slate'] {
+  --paper: #f4f5f7;
+  --card: #ffffff;
+  --ink: #171a21;
+  --ink-soft: #4d5462;
+  --faint: #939bab;
+  --line: #e2e5ea;
+  --line-strong: #c4cad4;
+  --accent: #3b6fd4;
+  --amber: #9a6b0f;
+  --shadow: 0 1px 2px rgba(20, 26, 40, 0.05), 0 6px 18px rgba(20, 26, 40, 0.06);
+  --shadow-lift: 0 2px 6px rgba(20, 26, 40, 0.09), 0 14px 34px rgba(20, 26, 40, 0.12);
+  --dot: rgba(23, 26, 33, 0.11);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='slate'] {
+    --paper: #0e1116;
+    --card: #161a22;
+    --ink: #e7eaf0;
+    --ink-soft: #a2aab8;
+    --faint: #6c7482;
+    --line: #232833;
+    --line-strong: #363d4a;
+    --accent: #6f9bef;
+    --amber: #d0a13a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.5), 0 14px 34px rgba(0, 0, 0, 0.5);
+    --dot: rgba(231, 234, 240, 0.1);
+  }
+}
+
+/* ---------- ink: high contrast, almost monochrome ---------- */
+
+:root[data-theme='ink'] {
+  --paper: #ffffff;
+  --card: #ffffff;
+  --ink: #000000;
+  --ink-soft: #3d3d3d;
+  --faint: #8a8a8a;
+  --line: #e0e0e0;
+  --line-strong: #1a1a1a;
+  --accent: #000000;
+  --amber: #8a6100;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+  --shadow-lift: 0 2px 0 rgba(0, 0, 0, 0.9);
+  --dot: rgba(0, 0, 0, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='ink'] {
+    --paper: #000000;
+    --card: #0a0a0a;
+    --ink: #ffffff;
+    --ink-soft: #c9c9c9;
+    --faint: #7d7d7d;
+    --line: #242424;
+    --line-strong: #e8e8e8;
+    --accent: #ffffff;
+    --amber: #e0b84a;
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+    --shadow-lift: 0 2px 0 rgba(255, 255, 255, 0.7);
+    --dot: rgba(255, 255, 255, 0.16);
   }
 }
 
@@ -1272,3 +1387,28 @@ textarea {
 .note-tools button:nth-child(1) { font-weight: 700; }
 .note-tools button:nth-child(2) { font-style: italic; font-family: var(--serif); }
 .note-tools button:nth-child(6) { font-family: ui-monospace, monospace; font-size: 9.5px; }
+
+/* ---------- theme swatches ---------- */
+
+.theme-row { display: flex; gap: 6px; padding: 4px 8px 2px; }
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.swatch span {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+.swatch.on { outline: 1.5px solid var(--accent); outline-offset: 2px; border-color: transparent; }
+.swatch[data-swatch='mint'] span { background: linear-gradient(135deg, #f1f7f3 50%, #1f9d6b 50%); }
+.swatch[data-swatch='paper'] span { background: linear-gradient(135deg, #f2efe7 50%, #c96442 50%); }
+.swatch[data-swatch='slate'] span { background: linear-gradient(135deg, #f4f5f7 50%, #3b6fd4 50%); }
+.swatch[data-swatch='ink'] span { background: linear-gradient(135deg, #ffffff 50%, #000000 50%); }
