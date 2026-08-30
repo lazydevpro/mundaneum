@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type {
-  Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment, Link, ProvenanceFilter, XY,
+  Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment, Link,
+  ProvenanceFilter, Stroke, ViewPrefs, XY,
 } from './types'
 import { deleteAsset } from './capture/assets'
 import { currentBoardId, newId } from './boardId'
@@ -22,6 +23,8 @@ interface BoardState {
   positions: Record<string, XY>
   clusters: Cluster[]
   labels: LabelAssignment[]
+  strokes: Stroke[]
+  prefs: ViewPrefs
   filters: ProvenanceFilter
   selection: string[]
   engineStatus: EngineStatus
@@ -62,6 +65,9 @@ interface BoardState {
   logActivity(agent: string, text: string): void
   renameBoard(name: string): void
   replaceBoard(data: Persisted): void
+  addStroke(s: Omit<Stroke, 'id'>): void
+  undoStroke(): void
+  setPrefs(p: Partial<ViewPrefs>): void
 }
 
 export interface Persisted {
@@ -70,7 +76,11 @@ export interface Persisted {
   links: Record<string, Link>
   positions: Record<string, XY>
   labels: LabelAssignment[]
+  strokes?: Stroke[]
+  prefs?: ViewPrefs
 }
+
+const DEFAULT_PREFS: ViewPrefs = { style: 'pure', arrangement: 'clusters' }
 
 /** New cards land near the current viewport center; the canvas registers this. */
 export const dropTarget: { current: () => XY } = {
@@ -88,6 +98,8 @@ export const useBoard = create<BoardState>((set, get) => ({
   positions: {},
   clusters: [],
   labels: [],
+  strokes: [],
+  prefs: { ...DEFAULT_PREFS },
   filters: { mode: 'all', hiddenAgents: [] },
   selection: [],
   engineStatus: 'cold',
@@ -293,9 +305,23 @@ export const useBoard = create<BoardState>((set, get) => ({
       links: data.links,
       positions: data.positions,
       labels: data.labels,
+      strokes: data.strokes ?? [],
+      prefs: { ...DEFAULT_PREFS, ...data.prefs },
       clusters: [],
       selection: [],
     })
+  },
+
+  addStroke(stroke) {
+    set({ strokes: [...get().strokes, { ...stroke, id: newId('s') }] })
+  },
+
+  undoStroke() {
+    set({ strokes: get().strokes.slice(0, -1) })
+  },
+
+  setPrefs(p) {
+    set({ prefs: { ...get().prefs, ...p } })
   },
 }))
 
@@ -321,6 +347,8 @@ useBoard.subscribe((s) => {
       links: s.links,
       positions: s.positions,
       labels: s.labels,
+      strokes: s.strokes,
+      prefs: s.prefs,
     }
     void idbSet(key(s.boardId), data)
   }, 400)

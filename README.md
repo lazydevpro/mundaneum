@@ -115,6 +115,22 @@ what lets "everything is embeddable" coexist with a 150-card canvas. Unfurled
 titles and parsed excerpts also feed the embedding engine, so rich cards
 cluster by meaning, not by URL.
 
+## Look & arrange
+
+Default view is **pure** — no card frames, just the material floating on the
+canvas, like a reference wall (switch to framed **cards** in the ◐ view
+menu). Arrangements, all computed by the page: **clusters** (anchored force
+layout), **masonry** (the tiled-gallery wall, ordered so semantic neighbors
+stay adjacent), **grid**, **one row**, **one column**. Provisional agent
+material stays visibly provisional in every style — that's information, not
+decoration.
+
+Notes support markdown-lite — headings, bullets, `code`, **bold**, and
+interactive `- [ ]` task lists (click to toggle). Double-click a note to
+edit it in place. A pen mode (+ menu → draw) inks freehand strokes, lines,
+boxes, and ovals straight onto the canvas; ink is pure geometry and is never
+exposed to agents.
+
 ## Run it
 
 ```bash

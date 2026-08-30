@@ -5,11 +5,18 @@ import { cardSize, engineEvents } from '../engine/engine'
 import { spatial } from '../engine/spatial'
 import { ingestFiles, ingestText } from '../capture/ingest'
 import { CardView } from './CardView'
+import { InkLayer, useInk, type PenTool } from './ink'
 
 interface View {
   x: number
   y: number
   k: number
+}
+
+interface Editing {
+  at: XY
+  cardId?: string
+  initial?: string
 }
 
 export function Canvas() {
@@ -23,6 +30,9 @@ export function Canvas() {
   const links = useBoard((s) => s.links)
   const clusters = useBoard((s) => s.clusters)
   const selection = useBoard((s) => s.selection)
+  const style = useBoard((s) => s.prefs.style)
+  const arrangement = useBoard((s) => s.prefs.arrangement)
+  const pen = useInk((s) => s.pen)
 
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 })
   const viewRef = useRef(view)
@@ -32,10 +42,11 @@ export function Canvas() {
   const [draggingCard, setDraggingCard] = useState<string | null>(null)
   const [panning, setPanning] = useState(false)
   const [lasso, setLasso] = useState<XY[] | null>(null)
-  const [editorAt, setEditorAt] = useState<XY | null>(null)
+  const [editing, setEditing] = useState<Editing | null>(null)
+  const [currentInk, setCurrentInk] = useState<{ kind: PenTool; points: XY[] } | null>(null)
 
   const gesture = useRef<{
-    mode: 'pan' | 'card' | 'lasso' | null
+    mode: 'pan' | 'card' | 'lasso' | 'ink' | null
     id?: string
     start: XY
     startView?: View
@@ -52,6 +63,15 @@ export function Canvas() {
   useEffect(() => {
     dropTarget.current = () => toWorld(window.innerWidth / 2, window.innerHeight / 2 - 40)
   }, [toWorld])
+
+  // Esc leaves pen mode.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') useInk.getState().setPen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Keep the spatial index fresh so lasso + region queries stay honest.
   useEffect(() => {
@@ -128,11 +148,23 @@ export function Canvas() {
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
+  const startInk = (e: React.PointerEvent) => {
+    ;(boardRef.current as HTMLElement).setPointerCapture(e.pointerId)
+    const p = toWorld(e.clientX, e.clientY)
+    gesture.current = { mode: 'ink', start: p, moved: false }
+    setCurrentInk({ kind: useInk.getState().tool, points: [p] })
+  }
+
   // ---- pointer gestures ----
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     const target = e.target as HTMLElement
-    if (target.closest('[data-card]') || target.closest('.note-editor')) return
+    if (target.closest('.note-editor')) return
+    if (pen) {
+      startInk(e)
+      return
+    }
+    if (target.closest('[data-card]')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     if (e.shiftKey) {
       const p = toWorld(e.clientX, e.clientY)
@@ -151,6 +183,7 @@ export function Canvas() {
 
   const onCardDown = (e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return
+    if (pen) return // ink flows over cards; the board handler catches it
     e.stopPropagation()
     boardRef.current?.setPointerCapture(e.pointerId)
     const p = useBoard.getState().positions[id] ?? { x: 0, y: 0 }
@@ -179,12 +212,27 @@ export function Canvas() {
     } else if (g.mode === 'lasso') {
       const p = toWorld(e.clientX, e.clientY)
       setLasso((prev) => (prev ? [...prev, p] : [p]))
+    } else if (g.mode === 'ink') {
+      const p = toWorld(e.clientX, e.clientY)
+      setCurrentInk((cur) =>
+        cur
+          ? {
+              ...cur,
+              points: cur.kind === 'draw' ? [...cur.points, p] : [cur.points[0], p],
+            }
+          : cur,
+      )
     }
   }
 
   const onUp = () => {
     const g = gesture.current
-    if (g.mode === 'lasso' && lasso && lasso.length > 2) {
+    if (g.mode === 'ink') {
+      if (currentInk && currentInk.points.length > 1 && g.moved) {
+        useBoard.getState().addStroke({ kind: currentInk.kind, points: currentInk.points })
+      }
+      setCurrentInk(null)
+    } else if (g.mode === 'lasso' && lasso && lasso.length > 2) {
       useBoard.getState().setSelection(spatial.searchPolygon(lasso))
     } else if (g.mode === 'card' && g.id && !g.moved) {
       const sel = useBoard.getState().selection
@@ -199,15 +247,28 @@ export function Canvas() {
   }
 
   useEffect(() => {
-    const onNewNote = () => setEditorAt(toWorld(window.innerWidth / 2, window.innerHeight / 2 - 60))
+    const onNewNote = () =>
+      setEditing({ at: toWorld(window.innerWidth / 2, window.innerHeight / 2 - 60) })
     window.addEventListener('mundaneum:new-note', onNewNote)
     return () => window.removeEventListener('mundaneum:new-note', onNewNote)
   }, [toWorld])
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    if (pen) return
     const target = e.target as HTMLElement
-    if (target.closest('[data-card]') || target.closest('.note-editor')) return
-    setEditorAt(toWorld(e.clientX, e.clientY))
+    if (target.closest('.note-editor')) return
+    const cardEl = target.closest('[data-card]') as HTMLElement | null
+    if (cardEl) {
+      // Double-click a text card: edit it in place.
+      const id = cardEl.dataset.card!
+      const card = useBoard.getState().cards[id]
+      if (card?.type === 'text') {
+        const at = useBoard.getState().positions[id] ?? toWorld(e.clientX, e.clientY)
+        setEditing({ at, cardId: id, initial: card.content })
+      }
+      return
+    }
+    setEditing({ at: toWorld(e.clientX, e.clientY) })
   }
 
   // ---- drag & drop files onto the canvas ----
@@ -229,7 +290,9 @@ export function Canvas() {
   return (
     <div
       ref={boardRef}
-      className={'board' + (panning ? ' panning' : '')}
+      className={
+        'board style-' + style + (panning ? ' panning' : '') + (pen ? ' penning' : '')
+      }
       onPointerDown={onBackgroundDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -266,26 +329,27 @@ export function Canvas() {
           })}
         </svg>
 
-        {clusters.map((c) => {
-          const pts = c.cardIds.map((id) => positions[id]).filter(Boolean)
-          if (!pts.length) return null
-          const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length
-          const top = Math.min(...pts.map((p) => p.y))
-          return (
-            <div
-              key={c.id}
-              className="cluster-label"
-              style={{
-                left: cx,
-                top: top - 40 - 30 / view.k,
-                transform: 'translate(-50%, -50%) scale(' + 1 / view.k + ')',
-              }}
-            >
-              {c.label ?? '·  ·  ·'}
-              {c.label && c.labeledBy && <span className="by">{c.labeledBy}</span>}
-            </div>
-          )
-        })}
+        {arrangement === 'clusters' &&
+          clusters.map((c) => {
+            const pts = c.cardIds.map((id) => positions[id]).filter(Boolean)
+            if (!pts.length) return null
+            const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length
+            const top = Math.min(...pts.map((p) => p.y))
+            return (
+              <div
+                key={c.id}
+                className="cluster-label"
+                style={{
+                  left: cx,
+                  top: top - 40 - 30 / view.k,
+                  transform: 'translate(-50%, -50%) scale(' + 1 / view.k + ')',
+                }}
+              >
+                {c.label ?? '·  ·  ·'}
+                {c.label && c.labeledBy && <span className="by">{c.labeledBy}</span>}
+              </div>
+            )
+          })}
 
         {cards.map((c) => (
           <CardView
@@ -298,14 +362,21 @@ export function Canvas() {
           />
         ))}
 
-        {editorAt && (
+        <InkLayer current={currentInk} />
+
+        {editing && (
           <NoteEditor
-            at={editorAt}
+            at={editing.at}
+            initial={editing.initial}
             onDone={(text) => {
-              if (text.trim()) {
-                useBoard.getState().addCards([{ content: text.trim(), at: editorAt }], 'human')
+              const s = useBoard.getState()
+              if (editing.cardId) {
+                if (text.trim()) s.updateCard(editing.cardId, { content: text })
+                else s.removeCard(editing.cardId)
+              } else if (text.trim()) {
+                s.addCards([{ content: text.trim(), at: editing.at }], 'human')
               }
-              setEditorAt(null)
+              setEditing(null)
             }}
           />
         )}
@@ -320,20 +391,32 @@ export function Canvas() {
   )
 }
 
-function NoteEditor({ at, onDone }: { at: XY; onDone: (text: string) => void }) {
+function NoteEditor({
+  at,
+  initial,
+  onDone,
+}: {
+  at: XY
+  initial?: string
+  onDone: (text: string) => void
+}) {
   const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => ref.current?.focus(), [])
+  useEffect(() => {
+    ref.current?.focus()
+    if (initial) ref.current?.setSelectionRange(initial.length, initial.length)
+  }, [initial])
   return (
     <div className="note-editor" style={{ left: at.x, top: at.y }}>
       <textarea
         ref={ref}
-        placeholder="write, then Enter"
+        defaultValue={initial}
+        placeholder={'write, then Enter\n- [ ] tasks and **markdown** work'}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
             onDone((e.target as HTMLTextAreaElement).value)
           }
-          if (e.key === 'Escape') onDone('')
+          if (e.key === 'Escape') onDone(initial ?? '')
         }}
         onBlur={(e) => onDone(e.target.value)}
       />

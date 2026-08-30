@@ -11,6 +11,7 @@ import { Brand, CornerControls, StatusLine } from './ui/Chrome'
 import { PlusMenu, type ModalKind } from './ui/PlusMenu'
 import { Modals } from './ui/Modals'
 import { ModelChoiceModal, ViewerModal } from './ui/Viewers'
+import { PenBar } from './ui/ink'
 import { CapturePage } from './ui/CapturePage'
 import { maybeLoadRelay } from './mcp/relay'
 import { classifyUrl } from './embed/providers'
@@ -78,6 +79,7 @@ export default function App() {
       <PlusMenu openModal={setModal} />
       <AgentBar onNeedsSetup={() => setModal('settings')} />
       <Modals kind={modal} close={() => setModal(null)} />
+      <PenBar />
       <ViewerModal />
       <ModelChoiceModal />
     </>

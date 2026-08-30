@@ -3,7 +3,9 @@ import { liveCards, useBoard } from '../store'
 import { embedCards, embedEvents, warmModel } from './embeddings'
 import { buildGraph, duplicateCandidates, topTerms, type BoardGraph } from './graph'
 import { runLayout, type LayoutNode } from './layout'
+import { arrangePositions } from './arrange'
 import { spatial } from './spatial'
+import type { Arrangement } from '../types'
 
 import { cardDims } from '../embed/dims'
 
@@ -87,31 +89,50 @@ async function doOrganize(): Promise<void> {
     byCommunity.get(comm)!.push(c)
   }
 
-  // Singleton communities share one "loose" patch instead of each claiming
-  // a grid cell — visually, the unsorted scraps live together at the edge.
-  const LOOSE = -2
-  const layoutCommunity = (id: string) => {
-    const comm = latest!.communities.get(id) ?? -1
-    return (byCommunity.get(comm)?.length ?? 0) < 2 ? LOOSE : comm
-  }
-  const nodes: LayoutNode[] = cards.map((c) => {
-    const { w, h } = cardSize(c)
-    return { id: c.id, community: layoutCommunity(c.id), w, h, x: 0, y: 0 }
-  })
-  const edges = latest.graph.edges().map((e) => ({
-    source: latest!.graph.source(e),
-    target: latest!.graph.target(e),
-    weight: latest!.graph.getEdgeAttribute(e, 'weight') as number,
-  }))
+  applyGeometry(cards, byCommunity)
+  useBoard.getState().setEngine('ready')
+  organizedOnce = true
+}
 
-  const { positions, anchors } = runLayout(nodes, edges)
+/**
+ * Geometry step, separated from semantics: the current arrangement decides
+ * where the page places everything. Clusters = anchored force layout; the
+ * rest project the same semantic ordering into masonry/grid/row/column.
+ */
+function applyGeometry(cards: Card[], byCommunity: Map<number, Card[]>): void {
+  const mode = useBoard.getState().prefs.arrangement
+  let positions: Record<string, { x: number; y: number }>
+
+  if (mode === 'clusters') {
+    // Singleton communities share one "loose" patch instead of each claiming
+    // a grid cell — visually, the unsorted scraps live together at the edge.
+    const LOOSE = -2
+    const layoutCommunity = (id: string) => {
+      const comm = latest?.communities.get(id) ?? -1
+      return (byCommunity.get(comm)?.length ?? 0) < 2 ? LOOSE : comm
+    }
+    const nodes: LayoutNode[] = cards.map((c) => {
+      const { w, h } = cardSize(c)
+      return { id: c.id, community: layoutCommunity(c.id), w, h, x: 0, y: 0 }
+    })
+    const edges = latest
+      ? latest.graph.edges().map((e) => ({
+          source: latest!.graph.source(e),
+          target: latest!.graph.target(e),
+          weight: latest!.graph.getEdgeAttribute(e, 'weight') as number,
+        }))
+      : []
+    positions = runLayout(nodes, edges).positions
+  } else {
+    positions = arrangePositions(cards, mode, (id) => latest?.communities.get(id))
+  }
 
   const clusters: Cluster[] = [...byCommunity.entries()]
     .filter(([, members]) => members.length >= 2)
     .map(([id, members]) => ({
       id,
       cardIds: members.map((m) => m.id),
-      anchor: centroid(members.map((m) => positions[m.id] ?? anchors.get(id)!)),
+      anchor: centroid(members.map((m) => positions[m.id]).filter(Boolean)),
     }))
 
   const s = useBoard.getState()
@@ -124,9 +145,26 @@ async function doOrganize(): Promise<void> {
       return { id: c.id, x: p.x, y: p.y, w, h }
     }),
   )
-  s.setEngine('ready')
-  organizedOnce = true
   engineEvents.dispatchEvent(new CustomEvent('organized'))
+}
+
+/** Instant re-projection when the human switches arrangement — no re-embed. */
+export function applyArrangement(mode: Arrangement): void {
+  const s = useBoard.getState()
+  s.setPrefs({ arrangement: mode })
+  const cards = liveCards(s.cards)
+  if (cards.length < 2) return
+  if (mode === 'clusters' && !latest) {
+    void organize() // needs the semantic layer first
+    return
+  }
+  const byCommunity = new Map<number, Card[]>()
+  for (const c of cards) {
+    const comm = latest?.communities.get(c.id) ?? -1
+    if (!byCommunity.has(comm)) byCommunity.set(comm, [])
+    byCommunity.get(comm)!.push(c)
+  }
+  applyGeometry(cards, byCommunity)
 }
 
 function centroid(points: Array<{ x: number; y: number }>): { x: number; y: number } {

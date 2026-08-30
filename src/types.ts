@@ -74,6 +74,21 @@ export interface XY {
   y: number
 }
 
+/** On-canvas ink: freehand and shapes. Pure geometry — never exposed to agents. */
+export interface Stroke {
+  id: string
+  kind: 'draw' | 'line' | 'rect' | 'ellipse'
+  points: XY[] // draw: polyline; line/rect/ellipse: [start, end]
+}
+
+export type CardStyle = 'pure' | 'cards'
+export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column'
+
+export interface ViewPrefs {
+  style: CardStyle
+  arrangement: Arrangement
+}
+
 export type EngineStatus = 'cold' | 'warming' | 'ready' | 'embedding' | 'organizing'
 
 export interface ProvenanceFilter {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { liveCards, useBoard } from '../store'
 import { agentMark } from '../agents/identity'
 import type { WebMcpStatus } from '../mcp/webmcp'
+import { applyArrangement } from '../engine/engine'
+import type { Arrangement, CardStyle } from '../types'
 
 /** Everything that is not the board, kept to a whisper. */
 
@@ -65,8 +67,17 @@ export function StatusLine({ webmcp }: { webmcp: WebMcpStatus }) {
   )
 }
 
+const ARRANGEMENTS: Array<[Arrangement, string]> = [
+  ['clusters', 'clusters'],
+  ['masonry', 'masonry'],
+  ['grid', 'grid'],
+  ['row', 'one row'],
+  ['column', 'one column'],
+]
+
 export function CornerControls() {
   const filters = useBoard((s) => s.filters)
+  const prefs = useBoard((s) => s.prefs)
   const cardsMap = useBoard((s) => s.cards)
   const cards = useMemo(() => liveCards(cardsMap), [cardsMap])
   const [open, setOpen] = useState(false)
@@ -105,6 +116,33 @@ export function CornerControls() {
         </button>
         {open && (
           <div className="popover">
+            <div className="head">style</div>
+            {(
+              [
+                ['pure', 'pure — just the material'],
+                ['cards', 'cards — framed'],
+              ] as Array<[CardStyle, string]>
+            ).map(([st, label]) => (
+              <button
+                key={st}
+                className={'row' + (prefs.style === st ? ' on' : '')}
+                onClick={() => useBoard.getState().setPrefs({ style: st })}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="sep" />
+            <div className="head">arrange</div>
+            {ARRANGEMENTS.map(([mode, label]) => (
+              <button
+                key={mode}
+                className={'row' + (prefs.arrangement === mode ? ' on' : '')}
+                onClick={() => applyArrangement(mode)}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="sep" />
             <div className="head">show</div>
             {(
               [

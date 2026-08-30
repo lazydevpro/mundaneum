@@ -4,6 +4,7 @@ import { agentMark } from '../agents/identity'
 import { useBoard } from '../store'
 import { EmbedBody } from '../embed/EmbedBody'
 import { cardWidth } from '../embed/dims'
+import { hasMd, MdText } from './md'
 
 /**
  * Provenance is the visual system, legible at 480p:
@@ -58,7 +59,13 @@ export const CardView = memo(function CardView({
       ) : (
         <>
           {card.title && <div className="title">{card.title}</div>}
-          <div className="body">{card.content}</div>
+          {hasMd(card.content) ? (
+            <div className="body md-body">
+              <MdText text={card.content} cardId={card.id} />
+            </div>
+          ) : (
+            <div className="body">{card.content}</div>
+          )}
         </>
       )}
 

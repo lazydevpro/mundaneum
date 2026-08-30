@@ -3,6 +3,7 @@ import { liveCards, useBoard } from '../store'
 import { organize } from '../engine/engine'
 import { ingestFiles } from '../capture/ingest'
 import { seedDemo } from '../demo/seed'
+import { useInk } from './ink'
 
 /**
  * The one button. Everything else you can already do by pasting, dropping,
@@ -22,21 +23,24 @@ interface Item {
 const ITEMS: Item[] = [
   { key: 'note', label: 'note', hint: 'or double-click', always: true },
   { key: 'file', label: 'file', hint: 'or drop it' },
-  { key: 'sketch', label: 'sketch' },
+  { key: 'draw', label: 'draw', hint: 'ink + shapes' },
   { key: 'phone', label: 'phone camera' },
   { key: 'organize', label: 'organize', hint: 'the page decides', always: true },
 ]
 
 const STACKS: Record<string, string[]> = {
-  everything: ['note', 'file', 'sketch', 'phone', 'organize'],
+  everything: ['note', 'file', 'draw', 'phone', 'organize'],
   researcher: ['note', 'file', 'phone', 'organize'],
-  sketcher: ['note', 'sketch', 'organize'],
+  sketcher: ['note', 'draw', 'organize'],
 }
 
 function loadStack(): string[] {
   try {
     const raw = localStorage.getItem('mundaneum:stack')
-    if (raw) return JSON.parse(raw) as string[]
+    if (raw) {
+      // 'sketch' became 'draw' when ink moved onto the canvas
+      return (JSON.parse(raw) as string[]).map((k) => (k === 'sketch' ? 'draw' : k))
+    }
   } catch {
     /* default below */
   }
@@ -75,8 +79,8 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
       case 'file':
         fileRef.current?.click()
         return
-      case 'sketch':
-        openModal('sketch')
+      case 'draw':
+        useInk.getState().setPen(true)
         return
       case 'phone':
         openModal('qr')
