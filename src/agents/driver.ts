@@ -1,5 +1,6 @@
 import { useBoard } from '../store'
 import { applicableTools, callTool } from '../mcp/registry'
+import { executeViaWebMcp } from '../mcp/webmcp'
 import type { ProviderId } from './config'
 import { anthropic } from './providers/anthropic'
 import { gemini, geminiVideoMessage } from './providers/gemini'
@@ -83,7 +84,10 @@ export async function runAgent(
 /** The driver, not the model, stamps provenance — a model cannot sign as someone else. */
 async function execStamped(call: ToolCall, agent: ProviderId): Promise<string> {
   const input = { ...call.input, agent }
-  return callTool(call.name, input, agent)
+  // Prefer the browser's own WebMCP surface (spec in-page client path);
+  // identical payloads via the internal registry when it's absent.
+  const viaSpec = await executeViaWebMcp(call.name, input)
+  return viaSpec ?? callTool(call.name, input, agent)
 }
 
 export function resetAgent(id: ProviderId): void {

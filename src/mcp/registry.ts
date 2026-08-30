@@ -15,6 +15,8 @@ export interface ToolAnnotations {
 
 export interface ToolDef {
   name: string
+  /** Human-readable label per the WebMCP spec's optional title member. */
+  title?: string
   description: string
   inputSchema: Record<string, unknown>
   annotations?: ToolAnnotations
