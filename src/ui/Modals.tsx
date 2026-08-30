@@ -41,10 +41,11 @@ function QrModal() {
       <h3>Add from your phone</h3>
       <canvas ref={canvasRef} style={{ borderRadius: 10 }} />
       <p>
-        Scan to open this board's camera page.
+        Scan to open this board's camera on your phone — it can open the full
+        board there too.
         {bridged
-          ? ' Photos land here as cards while this is open.'
-          : ' Set a proxy URL under agents… to bridge photos to this screen.'}
+          ? ' Photos arrive here whenever you come back to this window.'
+          : ' Deploy the worker (or set a proxy URL under agents…) to bridge photos to this screen.'}
       </p>
     </div>
   )

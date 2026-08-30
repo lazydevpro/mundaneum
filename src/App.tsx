@@ -5,6 +5,7 @@ import { warmEngine } from './engine/engine'
 import { reapplyExtensions, registerBoardTools } from './mcp/tools'
 import { startWebMcp, type WebMcpStatus } from './mcp/webmcp'
 import { installPasteHandler } from './capture/ingest'
+import { installPhoneDropListener } from './capture/phone'
 import { Canvas } from './ui/Canvas'
 import { AgentBar } from './ui/AgentBar'
 import { Brand, CornerControls, StatusLine } from './ui/Chrome'
@@ -69,6 +70,7 @@ export default function App() {
     if (!isCapture) {
       probeProxy()
       installPasteHandler()
+      installPhoneDropListener()
       // Pre-warm the embedding model so the first organize is instant.
       void warmEngine()
     }

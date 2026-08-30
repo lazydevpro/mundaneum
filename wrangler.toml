@@ -12,8 +12,13 @@ not_found_handling = "single-page-application"
 # Secrets (set with `wrangler secret put <NAME>`):
 #   ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY
 # The app probes /health and only offers in-page agents that have keys.
-#
-# Optional: durable phone-drop slots (otherwise best-effort in-memory).
-# [[kv_namespaces]]
-# binding = "DROPS"
-# id = "<create with: wrangler kv namespace create DROPS>"
+
+# One Durable Object per board: the phone-drop slot needs strong consistency
+# (worker isolates don't share memory). SQLite backend = available free tier.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "BoardRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BoardRoom"]

@@ -25,28 +25,46 @@ export async function sendToDesktop(boardId: string, dataUrl: string): Promise<b
 
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
+/** One read of the slot; returns how many photos landed. */
+export async function collectPhoneDrops(): Promise<number> {
+  const url = dropEndpoint(useBoard.getState().boardId)
+  if (!url) return 0
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return 0
+    const data = (await res.json()) as { images?: string[] }
+    if (!data.images?.length) return 0
+    const store = useBoard.getState()
+    store.addCards(
+      data.images.map((image) => ({ content: image, type: 'image' as const, title: 'from phone' })),
+      'human',
+    )
+    store.logActivity('human', data.images.length + ' photo' + (data.images.length > 1 ? 's' : '') + ' from your phone')
+    return data.images.length
+  } catch {
+    return 0 /* mail slot empty or worker asleep — fine */
+  }
+}
+
 export function startPhonePolling(): void {
-  const boardId = useBoard.getState().boardId
-  const url = dropEndpoint(boardId)
-  if (!url || pollTimer) return
-  pollTimer = setInterval(async () => {
-    try {
-      const res = await fetch(url)
-      if (!res.ok) return
-      const data = (await res.json()) as { images?: string[] }
-      if (data.images?.length) {
-        useBoard.getState().addCards(
-          data.images.map((image) => ({ content: image, type: 'image' as const, title: 'from phone' })),
-          'human',
-        )
-      }
-    } catch {
-      /* mail slot empty or worker asleep — fine */
-    }
-  }, 2500)
+  if (!dropEndpoint(useBoard.getState().boardId) || pollTimer) return
+  pollTimer = setInterval(() => void collectPhoneDrops(), 2500)
 }
 
 export function stopPhonePolling(): void {
   clearInterval(pollTimer)
   pollTimer = undefined
+}
+
+/**
+ * The natural moment a phone photo should appear is when you put the phone
+ * down and look back at the board — so check on focus, not only while the
+ * QR dialog happens to be open. One request per return, no polling cost.
+ */
+export function installPhoneDropListener(): void {
+  const check = () => {
+    if (document.visibilityState === 'visible') void collectPhoneDrops()
+  }
+  window.addEventListener('focus', check)
+  document.addEventListener('visibilitychange', check)
 }

@@ -7,8 +7,12 @@
  *   POST /xai        -> api.x.ai/v1/chat/completions
  *
  * Plus the phone mail slot (not a sync backend — an ephemeral drop):
- *   POST /drop/:board  { image: dataUrl }   (kept ~5 min)
+ *   POST /drop/:board  { image: dataUrl }   (kept ~10 min)
  *   GET  /drop/:board  -> { images: [...] } (clears on read)
+ *
+ * The slot lives in a Durable Object, one per board. Worker isolates do not
+ * share memory — an in-process Map silently dropped every photo, because the
+ * phone's POST and the desktop's GET land on different isolates.
  *
  * Secrets: wrangler secret put ANTHROPIC_API_KEY / GEMINI_API_KEY / XAI_API_KEY
  * Optional var ALLOWED_ORIGIN locks CORS to the deployed app origin.
@@ -19,16 +23,62 @@ export interface Env {
   GEMINI_API_KEY?: string
   XAI_API_KEY?: string
   ALLOWED_ORIGIN?: string
-  DROPS?: KVNamespace
+  ROOMS?: DurableObjectNamespace
 }
 
-interface KVNamespace {
-  get(key: string): Promise<string | null>
-  put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>
-  delete(key: string): Promise<void>
+interface DurableObjectNamespace {
+  idFromName(name: string): DurableObjectId
+  get(id: DurableObjectId): { fetch(req: Request): Promise<Response> }
+}
+type DurableObjectId = { toString(): string }
+
+interface DurableObjectState {
+  storage: {
+    get<T>(key: string): Promise<T | undefined>
+    put<T>(key: string, value: T): Promise<void>
+    delete(key: string): Promise<boolean>
+  }
 }
 
-const memoryDrops = new Map<string, { images: string[]; at: number }>()
+const DROP_TTL_MS = 10 * 60 * 1000
+
+/** One board's ephemeral photo slot. Strongly consistent, unlike an isolate Map. */
+export class BoardRoom {
+  private state: DurableObjectState
+  constructor(state: DurableObjectState) {
+    this.state = state
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const json = (data: unknown, status = 200) =>
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      })
+
+    if (req.method === 'POST') {
+      const body = (await req.json()) as { image?: string }
+      if (!body.image || typeof body.image !== 'string' || body.image.length > 2_500_000) {
+        return json({ error: 'image missing or too large' }, 400)
+      }
+      const slot = (await this.state.storage.get<{ images: string[]; at: number }>('drop')) ?? {
+        images: [],
+        at: Date.now(),
+      }
+      const fresh = Date.now() - slot.at < DROP_TTL_MS ? slot.images : []
+      await this.state.storage.put('drop', {
+        images: [...fresh, body.image].slice(-6),
+        at: Date.now(),
+      })
+      return json({ ok: true })
+    }
+
+    const slot = await this.state.storage.get<{ images: string[]; at: number }>('drop')
+    const images = slot && Date.now() - slot.at < DROP_TTL_MS ? slot.images : []
+    if (slot) await this.state.storage.delete('drop')
+    return json({ images })
+  }
+}
 
 function cors(env: Env, origin: string | null): Record<string, string> {
   const allowed = env.ALLOWED_ORIGIN
@@ -170,39 +220,11 @@ export default {
       }
 
       const drop = url.pathname.match(/^\/drop\/([a-z0-9-]{1,40})$/i)
-      if (drop) {
-        const boardKey = 'drop:' + drop[1]
-        if (req.method === 'POST') {
-          const body = (await req.json()) as { image?: string }
-          if (!body.image || typeof body.image !== 'string' || body.image.length > 2_500_000) {
-            return json({ error: 'image missing or too large' }, 400, headers)
-          }
-          if (env.DROPS) {
-            const existing = JSON.parse((await env.DROPS.get(boardKey)) ?? '[]') as string[]
-            existing.push(body.image)
-            await env.DROPS.put(boardKey, JSON.stringify(existing.slice(-6)), {
-              expirationTtl: 300,
-            })
-          } else {
-            const slot = memoryDrops.get(boardKey) ?? { images: [], at: Date.now() }
-            slot.images = [...slot.images, body.image].slice(-6)
-            slot.at = Date.now()
-            memoryDrops.set(boardKey, slot)
-          }
-          return json({ ok: true }, 200, headers)
-        }
-        if (req.method === 'GET') {
-          let images: string[] = []
-          if (env.DROPS) {
-            images = JSON.parse((await env.DROPS.get(boardKey)) ?? '[]') as string[]
-            if (images.length) await env.DROPS.delete(boardKey)
-          } else {
-            const slot = memoryDrops.get(boardKey)
-            if (slot && Date.now() - slot.at < 300_000) images = slot.images
-            memoryDrops.delete(boardKey)
-          }
-          return json({ images }, 200, headers)
-        }
+      if (drop && (req.method === 'POST' || req.method === 'GET')) {
+        if (!env.ROOMS) return json({ error: 'drop slot not configured' }, 501, headers)
+        const room = env.ROOMS.get(env.ROOMS.idFromName('drop:' + drop[1]))
+        const res = await room.fetch(new Request(req.url, { method: req.method, body: req.body }))
+        return new Response(res.body, { status: res.status, headers: { 'content-type': 'application/json', ...headers } })
       }
 
       return json({ error: 'not found' }, 404, headers)

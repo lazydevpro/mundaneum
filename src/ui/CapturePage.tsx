@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useBoard } from '../store'
+import { boardUrl } from '../boardId'
 import { compressImage } from '../capture/ingest'
 import { sendToDesktop } from '../capture/phone'
 
@@ -33,6 +34,18 @@ export function CapturePage() {
           </>
         )}
       </p>
+      <a
+        className="capture-full"
+        href={boardUrl(useBoard.getState().boardId)}
+        onClick={(e) => {
+          // same document — swap the hash and reload into the full board
+          e.preventDefault()
+          location.hash = 'b=' + useBoard.getState().boardId
+          location.reload()
+        }}
+      >
+        open the full board on this device ↗
+      </a>
       <input
         ref={inputRef}
         type="file"
