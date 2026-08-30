@@ -84,6 +84,27 @@ export default {
         return res
       }
 
+      // Re-host an image (agent-generated URLs expire): fetch server-side,
+      // pass bytes back with CORS so the page can intern it as a data URL.
+      if (url.pathname === '/img' && req.method === 'GET') {
+        const target = url.searchParams.get('url') ?? ''
+        if (!/^https?:\/\//.test(target)) return json({ error: 'bad url' }, 400, headers)
+        const upstream = await fetch(target, {
+          redirect: 'follow',
+          signal: AbortSignal.timeout(12000),
+        })
+        const ctype = upstream.headers.get('content-type') ?? ''
+        if (!upstream.ok || !ctype.startsWith('image/')) {
+          return json({ error: 'not an image (' + upstream.status + ')' }, 415, headers)
+        }
+        const len = Number(upstream.headers.get('content-length') ?? 0)
+        if (len > 12_000_000) return json({ error: 'image too large' }, 413, headers)
+        return new Response(upstream.body, {
+          status: 200,
+          headers: { 'content-type': ctype, 'cache-control': 'public, max-age=86400', ...headers },
+        })
+      }
+
       if (url.pathname === '/health' && req.method === 'GET') {
         // Which in-page agents this deployment can serve; never the keys.
         return json(

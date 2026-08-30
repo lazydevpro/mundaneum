@@ -3,6 +3,8 @@ import { liveCards, useBoard } from '../store'
 import { clusterTerms, duplicatePairs, latestGraph, organize, scheduleOrganize } from '../engine/engine'
 import { spatial } from '../engine/spatial'
 import { classifyUrl } from '../embed/providers'
+import { compressImage } from '../capture/ingest'
+import { serviceBase } from '../agents/config'
 import { enrichCard } from '../embed/unfurl'
 import { defineTool } from './registry'
 
@@ -28,6 +30,34 @@ const cardBrief = (c: Card) => ({
   ...(c.needs ? { needs: c.needs } : {}),
   excerpt: excerpt(c),
 })
+
+/**
+ * Agent images: data URLs are recompressed like human drops; remote URLs
+ * (generated-image links expire within hours) are re-hosted through the
+ * worker's /img proxy into permanent data URLs. Falls back to the URL as-is.
+ */
+async function internImage(raw: string): Promise<string> {
+  try {
+    if (/^data:image\//.test(raw)) {
+      const blob = await (await fetch(raw)).blob()
+      return await compressImage(blob)
+    }
+    if (/^https?:\/\//.test(raw)) {
+      const base = serviceBase()
+      if (base !== null) {
+        const res = await fetch(base + '/img?url=' + encodeURIComponent(raw), {
+          signal: AbortSignal.timeout(15000),
+        })
+        if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/')) {
+          return await compressImage(await res.blob())
+        }
+      }
+    }
+  } catch {
+    /* keep the original reference */
+  }
+  return raw.slice(0, 2000)
+}
 
 export function registerBoardTools(): void {
   // ---------------------------------------------------------------- get_board
@@ -129,7 +159,7 @@ export function registerBoardTools(): void {
     name: 'add_cards',
     title: 'Add cards',
     description:
-      'Contribute material to the board (batch). Cards land as provisional (dashed border) until the human accepts them, signed with your agent name. Use for_card to serve an open help request. Never include coordinates — the page places everything.',
+      'Contribute material to the board (batch): text, links, videos, IMAGES (a data: URL or https image URL — expiring generated-image URLs are re-hosted permanently), and WIDGETS (type "widget": a complete self-contained HTML document with inline JS/CSS — it runs on the board in a locked sandbox with no access to the page, its storage, or other cards; give it a title and a one-line description). Cards land as provisional until the human accepts them, signed with your agent name. Use for_card to serve an open help request. Never include coordinates — the page places everything.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -139,9 +169,10 @@ export function registerBoardTools(): void {
           items: {
             type: 'object',
             properties: {
-              content: { type: 'string', description: 'The material itself: text, or a URL for link/video cards.' },
-              type: { type: 'string', enum: ['text', 'link', 'video'], description: 'Default text.' },
+              content: { type: 'string', description: 'The material: text; a URL for link/video/image cards; a data: URL for images; a full HTML document for widgets.' },
+              type: { type: 'string', enum: ['text', 'link', 'video', 'image', 'widget'], description: 'Default text.' },
               title: { type: 'string' },
+              description: { type: 'string', description: 'One line on what this is — required for images and widgets; it is how the card clusters and searches.' },
               needs: { type: 'string', description: 'Optional: mark this card as needing a capability another agent has.' },
               for_card: { type: 'string', description: 'Optional: id of a card whose open request this serves.' },
             },
@@ -153,35 +184,51 @@ export function registerBoardTools(): void {
       required: ['items'],
     },
     annotations: { untrustedContentHint: true },
-    execute: (input, { agent }) => {
+    execute: async (input, { agent }) => {
       const items = (input.items as Array<Record<string, unknown>> | undefined) ?? []
       if (!items.length) return JSON.stringify({ error: 'items is empty' })
       const s = useBoard.getState()
-      const created = s.addCards(
-        items.slice(0, 25).map((it) => {
-          const content = String(it.content ?? '').slice(0, 4000)
-          // Agent-contributed URLs get the same rich treatment as pasted ones.
-          if (/^https?:\/\/\S+$/.test(content)) {
-            const c = classifyUrl(content)
-            return {
-              content,
-              type: c.type,
-              meta: c.meta,
-              title: it.title ? String(it.title).slice(0, 140) : undefined,
-              needs: it.needs ? String(it.needs).slice(0, 200) : undefined,
-              forCard: it.for_card ? String(it.for_card) : undefined,
-            }
-          }
-          return {
-            content,
-            type: (['text', 'link', 'video'].includes(String(it.type)) ? it.type : 'text') as CardType,
+      const prepared = await Promise.all(
+        items.slice(0, 25).map(async (it) => {
+          const declared = String(it.type ?? '')
+          const raw = String(it.content ?? '')
+          const common = {
             title: it.title ? String(it.title).slice(0, 140) : undefined,
             needs: it.needs ? String(it.needs).slice(0, 200) : undefined,
             forCard: it.for_card ? String(it.for_card) : undefined,
           }
+          const description = it.description ? String(it.description).slice(0, 300) : undefined
+
+          if (declared === 'widget') {
+            return {
+              ...common,
+              content: raw.slice(0, 60000),
+              type: 'widget' as CardType,
+              meta: { description },
+            }
+          }
+          if (declared === 'image' || /^data:image\//.test(raw)) {
+            return {
+              ...common,
+              content: await internImage(raw),
+              type: 'image' as CardType,
+              meta: { description },
+            }
+          }
+          const content = raw.slice(0, 4000)
+          // Agent-contributed URLs get the same rich treatment as pasted ones.
+          if (/^https?:\/\/\S+$/.test(content)) {
+            const c = classifyUrl(content)
+            return { ...common, content, type: c.type, meta: { ...c.meta, description } }
+          }
+          return {
+            ...common,
+            content,
+            type: (['text', 'link', 'video'].includes(declared) ? declared : 'text') as CardType,
+          }
         }),
-        agent,
       )
+      const created = s.addCards(prepared, agent)
       for (const c of created) {
         if (/^https?:\/\//.test(c.content)) enrichCard(c.id)
       }

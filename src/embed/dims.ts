@@ -36,6 +36,8 @@ export function liveHeight(card: Card): number {
       return 400
     case 'model':
       return 240
+    case 'widget':
+      return 360
     default:
       return 380 // live article/figma/maps iframe
   }
@@ -64,6 +66,8 @@ export function cardDims(card: Card): { w: number; h: number } {
       return { w, h: 150 }
     case 'model':
       return { w, h: 230 }
+    case 'widget':
+      return { w, h: 140 }
     case 'file':
       return { w, h: 70 }
     default: {

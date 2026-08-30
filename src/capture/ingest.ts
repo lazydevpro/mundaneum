@@ -73,6 +73,7 @@ const SHEET_RE = /\.(csv|tsv|xlsx|xls|ods)$/i
 const DOC_RE = /\.(docx)$/i
 const MODEL_RE = /\.(glb|gltf)$/i
 const TEXTY_RE = /\.(md|txt|json|log|yml|yaml|toml)$/i
+const HTML_RE = /\.html?$/i
 
 export async function ingestFiles(files: FileList | File[], at?: XY): Promise<number> {
   const store = useBoard.getState()
@@ -153,6 +154,19 @@ export async function ingestFiles(files: FileList | File[], at?: XY): Promise<nu
             type: 'doc',
             title: cleanName(file.name),
             meta: { asset, filename: file.name },
+            at,
+          }],
+          'human',
+        )
+        n++
+      } else if (HTML_RE.test(file.name)) {
+        const text = await file.text()
+        store.addCards(
+          [{
+            content: text.slice(0, 60000),
+            type: 'widget',
+            title: cleanName(file.name),
+            meta: { filename: file.name },
             at,
           }],
           'human',

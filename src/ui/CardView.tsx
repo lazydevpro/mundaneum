@@ -14,7 +14,7 @@ import { Icon } from './icons'
  *  - agent card, pending   -> dashed border + mark, hover to accept/reject
  */
 
-const EMBED_TYPES = new Set(['link', 'video', 'audio', 'social', 'sheet', 'doc', 'model', 'file'])
+const EMBED_TYPES = new Set(['link', 'video', 'audio', 'social', 'sheet', 'doc', 'model', 'widget', 'file'])
 
 export const CardView = memo(function CardView({
   card,

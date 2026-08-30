@@ -9,6 +9,7 @@ export type CardType =
   | 'model' // 3D file (glb/gltf)
   | 'sheet' // csv/xlsx
   | 'doc' // docx/rtf-ish
+  | 'widget' // agent-authored HTML plugin, sandboxed
   | 'file' // anything else
 
 /** Unfurled metadata for URL cards; parsed preview for file cards. */

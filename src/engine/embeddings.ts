@@ -56,6 +56,8 @@ export function embeddableText(card: Card): string {
   const bits: Array<string | undefined> = [card.title, card.meta?.title, card.meta?.description]
   if (card.type === 'text' || card.type === 'sheet' || card.type === 'doc') {
     bits.push(card.content)
+  } else if (card.type === 'widget') {
+    bits.push(card.meta?.filename ?? 'interactive widget')
   } else if (/^https?:\/\//.test(card.content)) {
     bits.push(card.content.replace(/^https?:\/\//, '').replace(/[/_-]+/g, ' '))
   } else {

@@ -129,6 +129,19 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
           </span>
         </button>
       )
+    case 'widget':
+      return (
+        <button className="embed-face" onClick={onActivate} title="run widget (sandboxed)">
+          <span className="widget-face">
+            <span className="badge"><Icon name="code" size={14} /></span>
+            <span className="face-text">
+              <span className="title">{card.title ?? 'widget'}</span>
+              <span className="host">{meta.description ?? 'interactive — click to run'}</span>
+            </span>
+            <span className="play-mini"><Icon name="play" size={10} /></span>
+          </span>
+        </button>
+      )
     case 'model':
       return <ModelFace card={card} onActivate={onActivate} />
     default:
@@ -258,6 +271,21 @@ function LiveInner({ card }: { card: Card }) {
   const meta = card.meta ?? {}
 
   if (card.type === 'model') return <ModelLive card={card} />
+
+  if (card.type === 'widget') {
+    // Agent-authored code runs in a locked sandbox: allow-scripts ONLY.
+    // No allow-same-origin means an opaque origin — no cookies, no storage,
+    // no parent DOM, no board. That jail is what makes plugins safe here.
+    return (
+      <iframe
+        srcDoc={card.content}
+        title={card.title ?? 'widget'}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        loading="lazy"
+      />
+    )
+  }
 
   if (meta.asset) {
     if (!url) return <span className="host">loading…</span>
