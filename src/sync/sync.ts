@@ -74,7 +74,8 @@ export function localDoc(): SyncDoc {
   }
 }
 
-function applyDoc(doc: SyncDoc): boolean {
+/** Merge someone else's copy into ours. Shared by server sync and tab sync. */
+export function applyDoc(doc: SyncDoc): boolean {
   const s = useBoard.getState()
   const before = Object.keys(s.cards).length + Object.keys(s.links).length
   // Merge the server's copy into ours so local-only assets survive.

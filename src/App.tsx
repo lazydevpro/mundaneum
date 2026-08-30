@@ -7,6 +7,7 @@ import { startWebMcp, type WebMcpStatus } from './mcp/webmcp'
 import { installPasteHandler } from './capture/ingest'
 import { installPhoneDropListener } from './capture/phone'
 import { joinIfShared, startSync } from './sync/sync'
+import { startLocalSync } from './sync/local'
 import { Canvas } from './ui/Canvas'
 import { AgentBar } from './ui/AgentBar'
 import { Brand, CornerControls, StatusLine } from './ui/Chrome'
@@ -64,6 +65,7 @@ export default function App() {
       // Only after the local board is in memory — starting earlier would
       // push an empty document over the shared copy.
       if (!isCapture) {
+        startLocalSync() // other tabs on this machine, no server involved
         startSync()
         void joinIfShared() // opening a shared link brings the board with it
       }
