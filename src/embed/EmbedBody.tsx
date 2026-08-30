@@ -291,52 +291,71 @@ function loadModelViewer() {
 
 interface ModelViewerEl extends HTMLElement {
   toDataURL(type?: string): string
+  toBlob(opts?: { mimeType?: string; idealAspect?: boolean }): Promise<Blob>
 }
 
 function ModelFace({ card, onActivate }: { card: Card; onActivate: () => void }) {
   const url = useAssetUrlOf(card)
   const hostRef = useRef<HTMLSpanElement>(null)
+  const generating = !card.poster && !!url
 
-  // Snapshot mode without a poster yet: render the viewer once, offscreen,
-  // grab a frame, then tear it down. The heavy path runs exactly once.
+  // Snapshot mode without a poster yet: render the viewer IN PLACE (visible —
+  // model-viewer suspends rendering while offscreen), grab a frame once it
+  // loads, then swap to the still image. Runs exactly once per card.
   useEffect(() => {
-    if (card.poster || !url || card.embedMode === 'live') return
+    if (!generating || !hostRef.current) return
     let disposed = false
+    let mv: ModelViewerEl | null = null
     void loadModelViewer().then(() => {
       if (disposed || !hostRef.current) return
-      const mv = document.createElement('model-viewer') as ModelViewerEl
-      mv.setAttribute('src', url)
-      mv.style.cssText = 'width:320px;height:200px;position:absolute;left:-9999px;top:0'
-      const done = () => {
-        try {
-          const poster = mv.toDataURL('image/png')
-          useBoard.getState().updateCard(card.id, { poster })
-        } catch {
-          /* keep placeholder face */
-        }
-        mv.remove()
+      mv = document.createElement('model-viewer') as ModelViewerEl
+      mv.setAttribute('src', url!)
+      mv.setAttribute('camera-orbit', '35deg 70deg auto')
+      mv.setAttribute('interaction-prompt', 'none')
+      mv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%'
+      const capture = () => {
+        if (disposed || !mv) return
+        // toBlob re-renders synchronously before reading — toDataURL reads a
+        // possibly-cleared WebGL buffer and comes back blank.
+        void mv
+          .toBlob({ mimeType: 'image/png', idealAspect: false })
+          .then((blob) => {
+            // toBlob re-renders before reading, so the frame is real; only
+            // guard against a corrupt/empty file. Simple models ARE tiny.
+            if (blob.size < 400) throw new Error('empty capture')
+            return new Promise<string>((res, rej) => {
+              const r = new FileReader()
+              r.onload = () => res(r.result as string)
+              r.onerror = rej
+              r.readAsDataURL(blob)
+            })
+          })
+          .then((poster) => {
+            if (!disposed) useBoard.getState().updateCard(card.id, { poster })
+          })
+          .catch(() => {
+            /* viewer stays as the face — still usable */
+          })
       }
-      mv.addEventListener('poster-dismissed', () => setTimeout(done, 400))
-      mv.addEventListener('error', () => mv.remove())
-      document.body.appendChild(mv)
-      setTimeout(() => {
-        if (document.body.contains(mv)) done()
-      }, 6000)
+      mv.addEventListener('load', () => setTimeout(capture, 600))
+      hostRef.current.appendChild(mv)
+      setTimeout(capture, 7000) // belt and braces if 'load' never fires
     })
     return () => {
       disposed = true
+      mv?.remove()
     }
-  }, [card.poster, card.embedMode, url, card.id])
+  }, [generating, url, card.id])
 
   return (
     <button className="embed-face" onClick={onActivate} title="view in 3D">
-      <span className="video-thumb" ref={hostRef}>
+      <span className="video-thumb model-thumb" ref={hostRef}>
         {card.poster ? (
           <img className="face-img" src={card.poster} alt="" draggable={false} />
         ) : (
           <span className="thumb-blank model-blank">◇</span>
         )}
-        <span className="play-big">3D</span>
+        {!generating && <span className="play-big">3D</span>}
       </span>
       <span className="face-foot">
         <span className="title">{card.title ?? 'model'}</span>

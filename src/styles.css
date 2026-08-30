@@ -820,3 +820,4 @@ textarea {
 }
 *::-webkit-scrollbar-thumb:hover { background-color: var(--faint); background-clip: content-box; }
 *::-webkit-scrollbar-corner { background: transparent; }
+.model-thumb { height: 150px; background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
