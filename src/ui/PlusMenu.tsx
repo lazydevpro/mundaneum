@@ -4,6 +4,7 @@ import { organize } from '../engine/engine'
 import { ingestFiles } from '../capture/ingest'
 import { seedDemo } from '../demo/seed'
 import { useInk } from './ink'
+import { Icon } from './icons'
 
 /**
  * The one button. Everything else you can already do by pasting, dropping,
@@ -103,7 +104,7 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
         }}
         aria-label="add"
       >
-        +
+        <Icon name="plus" size={19} />
       </button>
 
       {open && (
@@ -136,7 +137,7 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
                     )
                   }
                 >
-                  {stack.includes(i.key) ? '☑' : '☐'} {i.label}
+                  <Icon name={stack.includes(i.key) ? 'boxcheck' : 'boxempty'} size={13} /> {i.label}
                 </button>
               ))}
             </>

@@ -5,6 +5,7 @@ import { useBoard } from '../store'
 import { EmbedBody } from '../embed/EmbedBody'
 import { cardWidth } from '../embed/dims'
 import { hasMd, MdText } from './md'
+import { Icon } from './icons'
 
 /**
  * Provenance is the visual system, legible at 480p:
@@ -83,10 +84,10 @@ export const CardView = memo(function CardView({
             title={'accept (keep this ' + mark.label + ' card)'}
             onClick={() => useBoard.getState().acceptCard(card.id)}
           >
-            ✓
+            <Icon name="check" size={12} />
           </button>
           <button title="reject (remove)" onClick={() => useBoard.getState().rejectCard(card.id)}>
-            ✕
+            <Icon name="x" size={12} />
           </button>
         </div>
       )}

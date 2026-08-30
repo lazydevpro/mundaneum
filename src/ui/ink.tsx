@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Stroke, XY } from '../types'
 import { useBoard } from '../store'
+import { Icon, type IconName } from './icons'
 
 /**
  * Pen mode: draw / line / box / oval / arrow directly on the canvas.
@@ -92,12 +93,12 @@ export function PenBar() {
   const strokes = useBoard((s) => s.strokes)
   if (!pen && !pinned) return null
 
-  const tools: Array<[PenTool, string, string]> = [
-    ['draw', '✎', 'freehand'],
-    ['line', '╱', 'line'],
-    ['rect', '▭', 'box'],
-    ['ellipse', '◯', 'oval'],
-    ['arrow', '➔', 'arrow — card to card makes a link'],
+  const tools: Array<[PenTool, IconName, string]> = [
+    ['draw', 'pen', 'freehand'],
+    ['line', 'line', 'line'],
+    ['rect', 'box', 'box'],
+    ['ellipse', 'oval', 'oval'],
+    ['arrow', 'arrow', 'arrow — card to card makes a link'],
   ]
   return (
     <div className="chrome pen-bar">
@@ -107,7 +108,7 @@ export function PenBar() {
           title="move & select"
           onClick={() => setPen(false)}
         >
-          ✥
+          <Icon name="move" />
         </button>
       )}
       {tools.map(([t, glyph, label]) => (
@@ -120,7 +121,7 @@ export function PenBar() {
             setPen(true)
           }}
         >
-          {glyph}
+          <Icon name={glyph} />
         </button>
       ))}
       <span className="pen-sep" />
@@ -130,11 +131,11 @@ export function PenBar() {
         disabled={!strokes.length}
         onClick={() => useBoard.getState().undoStroke()}
       >
-        ↩
+        <Icon name="undo" />
       </button>
       {!pinned && (
         <button className="pen-btn done" title="done (Esc)" onClick={() => setPen(false)}>
-          ✓
+          <Icon name="check" />
         </button>
       )}
     </div>

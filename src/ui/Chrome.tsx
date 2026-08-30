@@ -4,6 +4,7 @@ import { agentMark } from '../agents/identity'
 import type { WebMcpStatus } from '../mcp/webmcp'
 import { applyArrangement } from '../engine/engine'
 import type { Arrangement, CardStyle } from '../types'
+import { Icon } from './icons'
 
 /** Everything that is not the board, kept to a whisper. */
 
@@ -113,7 +114,7 @@ export function CornerControls() {
       )}
       <div style={{ position: 'relative' }}>
         <button className={'chip' + (active ? ' active' : '')} onClick={() => setOpen(!open)}>
-          ◐
+          <Icon name="half" size={13} />
         </button>
         {open && (
           <div className="popover">

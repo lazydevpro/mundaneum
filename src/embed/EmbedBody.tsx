@@ -6,6 +6,7 @@ import { hostOf } from './providers'
 import { liveHeight } from './dims'
 import { useActive } from './active'
 import { openViewer } from '../ui/viewer'
+import { Icon } from '../ui/icons'
 
 /**
  * The body of every URL/file card. Facade pattern throughout: a static face
@@ -75,12 +76,12 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
     case 'audio':
       return (
         <button className="embed-face audio-face" onClick={onActivate} title="play">
-          <span className="badge">♪</span>
+          <span className="badge"><Icon name="note" size={14} /></span>
           <span className="face-text">
             <span className="title">{card.title ?? meta.title ?? card.content}</span>
             <span className="host">{meta.site ?? (isUrl ? hostOf(card.content) : 'audio')}</span>
           </span>
-          <span className="play-mini">▶</span>
+          <span className="play-mini"><Icon name="play" size={10} /></span>
         </button>
       )
     case 'social':
@@ -90,7 +91,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
           {meta.description && <span className="quote">{meta.description}</span>}
           <span className="face-foot">
             <span className="host">{meta.site ?? hostOf(card.content)}</span>
-            {meta.embedUrl && <span className="play-mini">▶</span>}
+            {meta.embedUrl && <span className="play-mini"><Icon name="play" size={10} /></span>}
           </span>
         </button>
       )
@@ -115,7 +116,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
             <span className="quote">{card.content.slice(0, 160)}</span>
           )}
           <span className="face-foot">
-            <span className="host">⊞ {meta.filename ?? 'sheet'}</span>
+            <span className="host"><Icon name="grid" size={11} /> {meta.filename ?? 'sheet'}</span>
           </span>
         </button>
       )
@@ -124,7 +125,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
         <button className="embed-face" onClick={() => openViewer(card)} title="open document">
           <span className="doc-excerpt">{card.content.slice(0, 220)}</span>
           <span className="face-foot">
-            <span className="host">≡ {meta.filename ?? 'document'}</span>
+            <span className="host"><Icon name="lines" size={11} /> {meta.filename ?? 'document'}</span>
           </span>
         </button>
       )
@@ -133,7 +134,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
     default:
       return (
         <span className="face-text">
-          <span className="title">⌘ {card.title ?? 'file'}</span>
+          <span className="title"><Icon name="file" size={12} /> {card.title ?? 'file'}</span>
           <span className="host">{card.content}</span>
         </span>
       )
@@ -169,7 +170,7 @@ function VideoFace({ card, onActivate }: { card: Card; onActivate: () => void })
     <button className="embed-face" onClick={onActivate} title="play">
       <span className="video-thumb">
         {face ? <img className="face-img" src={face} alt="" draggable={false} referrerPolicy="no-referrer" /> : <span className="thumb-blank" />}
-        <span className="play-big">▶</span>
+        <span className="play-big"><Icon name="play" size={28} /></span>
       </span>
       <span className="face-foot">
         <span className="title">{card.title ?? meta.title ?? 'video'}</span>
@@ -207,7 +208,7 @@ function ArticleFace({ card, onActivate }: { card: Card; onActivate: () => void 
               )
             }
           >
-            ✦
+            <Icon name="sparkle" size={11} />
           </button>
           <button
             title="embed the live page"
@@ -220,7 +221,7 @@ function ArticleFace({ card, onActivate }: { card: Card; onActivate: () => void 
               onActivate()
             }}
           >
-            ▶
+            <Icon name="play" size={11} />
           </button>
         </span>
       </span>
@@ -242,7 +243,7 @@ function LiveEmbed({ card, onClose }: { card: Card; onClose: () => void }) {
           onClick={onClose}
           title="back to preview"
         >
-          ✕
+          <Icon name="x" size={11} />
         </button>
       </div>
       <div className="live-body" style={{ height: h }} onPointerDown={(e) => e.stopPropagation()}>

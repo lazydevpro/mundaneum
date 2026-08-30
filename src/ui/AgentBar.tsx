@@ -3,6 +3,7 @@ import { agentMark } from '../agents/identity'
 import { providerConfigured, useAgentAvail, type ProviderId } from '../agents/config'
 import { runAgent } from '../agents/driver'
 import { liveCards, useBoard } from '../store'
+import { Icon } from './icons'
 
 const PROVIDERS: ProviderId[] = ['claude', 'gemini', 'grok']
 
@@ -103,7 +104,7 @@ export function AgentBar({ onNeedsSetup }: { onNeedsSetup: () => void }) {
           }}
         />
         <button className="agent-send" onClick={() => void submit()} disabled={Boolean(busy)} aria-label="send">
-          ↑
+          <Icon name="up" size={13} />
         </button>
       </div>
     </div>

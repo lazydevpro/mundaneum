@@ -950,3 +950,14 @@ textarea {
 }
 .md-task.done .box { background: var(--accent); border-color: var(--accent); }
 .md-task.done > span:last-child { color: var(--faint); text-decoration: line-through; }
+
+/* ---------- icons: block in buttons, baseline-tucked inline ---------- */
+
+.ico { display: block; }
+.play-big .ico { filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.55)); }
+.host .ico, .title .ico, .plus-item .ico {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 1px;
+}
+.plus.open .ico { /* rotation handled on the button */ }
