@@ -90,7 +90,9 @@ function applyDoc(doc: SyncDoc): boolean {
     agentProviders: s.agentProviders,
     agentTools: s.agentTools,
     deleted: merged.deleted,
-    prefs: merged.prefs,
+    // View preferences are per-device taste — how I like this board to look
+    // on my iPad shouldn't reach across and rearrange your desktop.
+    prefs: s.prefs,
   })
   const after = Object.keys(merged.cards).length + Object.keys(merged.links).length
   return after !== before

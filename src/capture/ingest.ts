@@ -238,8 +238,8 @@ export async function compressImage(file: File | Blob, max = 640): Promise<strin
 /** Global paste: works anywhere on the page except inside editors. */
 export function installPasteHandler(): void {
   window.addEventListener('paste', (e) => {
-    const target = e.target as HTMLElement
-    if (target.closest('input, textarea, [contenteditable]')) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest?.('input, textarea, [contenteditable]')) return
     const items = e.clipboardData?.items
     if (!items) return
     const files: File[] = []

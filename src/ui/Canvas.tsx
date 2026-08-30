@@ -4,6 +4,8 @@ import { dropTarget, useBoard, visibleCards } from '../store'
 import { cardSize, engineEvents } from '../engine/engine'
 import { spatial } from '../engine/spatial'
 import { ingestFiles, ingestText } from '../capture/ingest'
+import { classifyUrl } from '../embed/providers'
+import { enrichCard } from '../embed/unfurl'
 import { CardView } from './CardView'
 import { InkLayer, useInk, type PenTool } from './ink'
 
@@ -47,13 +49,30 @@ export function Canvas() {
   const [currentInk, setCurrentInk] = useState<{ kind: PenTool; points: XY[] } | null>(null)
 
   const gesture = useRef<{
-    mode: 'pan' | 'card' | 'lasso' | 'ink' | 'pinch' | null
+    mode: 'pan' | 'card' | 'lasso' | 'ink' | 'pinch' | 'stroke' | null
     id?: string
+    strokeIds?: string[]
+    last?: XY
     start: XY
     startView?: View
     cardStart?: XY
     moved: boolean
   }>({ mode: null, start: { x: 0, y: 0 }, moved: false })
+
+  /** Nearest drawing under a world point, if any is close enough to grab. */
+  const hitStroke = (p: XY): string | null => {
+    const r = 12 / viewRef.current.k
+    for (const s of [...useBoard.getState().strokes].reverse()) {
+      const pts =
+        s.kind === 'rect' || s.kind === 'ellipse'
+          ? rectOutline(s.points[0], s.points[s.points.length - 1])
+          : s.points
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (distToSeg(p, pts[i], pts[i + 1]) < r) return s.id
+      }
+    }
+    return null
+  }
 
   // Live pointers (touch): two fingers anywhere = pinch zoom + pan.
   const pointers = useRef(new Map<number, XY>())
@@ -188,8 +207,8 @@ export function Canvas() {
   // ---- pointer gestures ----
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
-    const target = e.target as HTMLElement
-    if (target.closest('.note-editor')) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest?.('.note-editor')) return
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (beginPinchIfTwo()) return
     // Apple Pencil draws even outside pen mode; fingers navigate.
@@ -197,7 +216,27 @@ export function Canvas() {
       startInk(e)
       return
     }
-    if (target.closest('[data-card]')) return
+    if (target?.closest?.('[data-card]')) return
+
+    // Drawings behave like cards: click to select, drag to move.
+    const world = toWorld(e.clientX, e.clientY)
+    const hit = hitStroke(world)
+    if (hit) {
+      capture(e)
+      const sel = useBoard.getState().strokeSelection
+      const moving = sel.includes(hit) ? sel : [hit]
+      if (!sel.includes(hit)) useBoard.getState().setStrokeSelection(moving)
+      gesture.current = {
+        mode: 'stroke',
+        id: hit,
+        strokeIds: moving,
+        start: { x: e.clientX, y: e.clientY },
+        last: world,
+        moved: false,
+      }
+      return
+    }
+
     capture(e)
     if (e.shiftKey) {
       const p = toWorld(e.clientX, e.clientY)
@@ -264,6 +303,10 @@ export function Canvas() {
       if (g.moved && draggingCard !== g.id) setDraggingCard(g.id)
       const k = viewRef.current.k
       useBoard.getState().moveCard(g.id, { x: g.cardStart.x + dx / k, y: g.cardStart.y + dy / k })
+    } else if (g.mode === 'stroke' && g.strokeIds && g.last) {
+      const p = toWorld(e.clientX, e.clientY)
+      useBoard.getState().moveStrokes(g.strokeIds, p.x - g.last.x, p.y - g.last.y)
+      g.last = p
     } else if (g.mode === 'lasso') {
       const p = toWorld(e.clientX, e.clientY)
       setLasso((prev) => (prev ? [...prev, p] : [p]))
@@ -388,8 +431,22 @@ export function Canvas() {
         }
       }
       setCurrentInk(null)
+    } else if (g.mode === 'stroke') {
+      // A click without a drag toggles that drawing's selection.
+      if (!g.moved && g.id) {
+        const sel = useBoard.getState().strokeSelection
+        useBoard.getState().setStrokeSelection(
+          sel.length === 1 && sel[0] === g.id ? [] : [g.id],
+        )
+      }
     } else if (g.mode === 'lasso' && lasso && lasso.length > 2) {
       useBoard.getState().setSelection(spatial.searchPolygon(lasso))
+      // The lasso catches drawings too, not just cards.
+      useBoard.getState().setStrokeSelection(
+        useBoard.getState().strokes
+          .filter((s) => s.points.some((p) => pointInPolygon(p, lasso)))
+          .map((s) => s.id),
+      )
     } else if (g.mode === 'card' && g.id && !g.moved) {
       const sel = useBoard.getState().selection
       useBoard.getState().setSelection(sel.includes(g.id) ? [] : [g.id])
@@ -411,9 +468,9 @@ export function Canvas() {
 
   const onDoubleClick = (e: React.MouseEvent) => {
     if (pen) return
-    const target = e.target as HTMLElement
-    if (target.closest('.note-editor')) return
-    const cardEl = target.closest('[data-card]') as HTMLElement | null
+    const target = e.target as HTMLElement | null
+    if (target?.closest?.('.note-editor')) return
+    const cardEl = target?.closest?.('[data-card]') as HTMLElement | null
     if (cardEl) {
       // Double-click a text card: edit it in place.
       const id = cardEl.dataset.card!
@@ -595,10 +652,16 @@ export function Canvas() {
             onDone={(text) => {
               const s = useBoard.getState()
               if (editing.cardId) {
-                if (text.trim()) s.updateCard(editing.cardId, { content: text })
-                else s.removeCard(editing.cardId)
+                if (!text.trim()) s.removeCard(editing.cardId)
+                else if (text.trim() !== editing.initial) {
+                  s.updateCard(editing.cardId, { content: text })
+                  // Typed a bare URL into a note? It should become a link
+                  // card with a preview, exactly as pasting one does.
+                  reclassifyIfUrl(editing.cardId, text.trim())
+                }
               } else if (text.trim()) {
-                s.addCards([{ content: text.trim(), at: editing.at }], 'human')
+                // Same path as paste and drop, so a typed URL unfurls too.
+                ingestText(text.trim(), editing.at)
               }
               setEditing(null)
             }}
@@ -613,6 +676,18 @@ export function Canvas() {
       </div>
     </div>
   )
+}
+
+/** An edited note that is now just a URL becomes a proper link card. */
+function reclassifyIfUrl(cardId: string, text: string): void {
+  if (!/^https?:\/\/\S+$/.test(text) || /\s/.test(text)) return
+  const cls = classifyUrl(text)
+  const card = useBoard.getState().cards[cardId]
+  useBoard.getState().updateCard(cardId, {
+    type: cls.type,
+    meta: { ...card?.meta, ...cls.meta, unfurled: false },
+  })
+  enrichCard(cardId)
 }
 
 function distToSeg(p: XY, a: XY, b: XY): number {
@@ -635,6 +710,17 @@ function rectOutline(a: XY, b: XY): XY[] {
   return [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a]
 }
 
+function pointInPolygon(p: XY, poly: XY[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y
+    if (yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
 function NoteEditor({
   at,
   initial,
@@ -649,13 +735,93 @@ function NoteEditor({
     ref.current?.focus()
     if (initial) ref.current?.setSelectionRange(initial.length, initial.length)
   }, [initial])
+
+  /**
+   * Formatting writes markdown rather than hidden rich-text state: the card
+   * already renders it, agents can read and write it, and it survives sync
+   * as plain text. The toolbar is the rich editor; markdown is the format.
+   */
+  // Clicking a toolbar button can move the caret before the handler runs, so
+  // the last real selection is remembered and used instead of reading it back.
+  const sel = useRef({ start: 0, end: 0 })
+  const remember = () => {
+    const ta = ref.current
+    if (ta) sel.current = { start: ta.selectionStart, end: ta.selectionEnd }
+  }
+
+  const wrap = (before: string, after = before) => {
+    const ta = ref.current
+    if (!ta) return
+    const { start, end } = sel.current
+    const picked = ta.value.slice(start, end) || 'text'
+    ta.setRangeText(before + picked + after, start, end)
+    const from = start + before.length
+    ta.focus()
+    ta.setSelectionRange(from, from + picked.length)
+    remember()
+  }
+
+  const linePrefix = (prefix: string) => {
+    const ta = ref.current
+    if (!ta) return
+    const { start } = sel.current
+    const lineStart = ta.value.lastIndexOf('\n', start - 1) + 1
+    const existing = ta.value.slice(lineStart).match(/^(#{1,3} |- \[[ x]\] |- )/)
+    let caret = start
+    if (existing) {
+      ta.setRangeText('', lineStart, lineStart + existing[0].length)
+      caret -= existing[0].length
+      if (existing[0] === prefix) {
+        ta.focus()
+        ta.setSelectionRange(caret, caret)
+        remember()
+        return
+      }
+    }
+    ta.setRangeText(prefix, lineStart, lineStart)
+    ta.focus()
+    ta.setSelectionRange(caret + prefix.length, caret + prefix.length)
+    remember()
+  }
+
+  const tools: Array<[string, string, () => void]> = [
+    ['B', 'bold', () => wrap('**')],
+    ['I', 'italic', () => wrap('*')],
+    ['H', 'heading', () => linePrefix('# ')],
+    ['•', 'bullet list', () => linePrefix('- ')],
+    ['☑', 'task', () => linePrefix('- [ ] ')],
+    ['<>', 'code', () => wrap('`')],
+    ['↗', 'link', () => wrap('[', '](url)')],
+  ]
+
   return (
     <div className="note-editor" style={{ left: at.x, top: at.y }}>
+      <div className="note-tools" onPointerDown={(e) => e.preventDefault()}>
+        {tools.map(([label, title, fn]) => (
+          <button key={title} title={title} onClick={fn}>
+            {label}
+          </button>
+        ))}
+      </div>
       <textarea
         ref={ref}
         defaultValue={initial}
-        placeholder={'write, then Enter\n- [ ] tasks and **markdown** work'}
+        placeholder={'write, then Enter\nshift+Enter for a new line'}
+        onSelect={remember}
+        onKeyUp={remember}
+        onClick={remember}
         onKeyDown={(e) => {
+          const mod = e.metaKey || e.ctrlKey
+          if (mod && e.key.toLowerCase() === 'b') {
+            e.preventDefault()
+            wrap('**')
+            return
+          }
+          if (mod && e.key.toLowerCase() === 'i') {
+            e.preventDefault()
+            wrap('*')
+            return
+          }
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
             onDone((e.target as HTMLTextAreaElement).value)

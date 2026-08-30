@@ -76,13 +76,17 @@ export function strokePath(s: Pick<Stroke, 'kind' | 'points'>) {
 
 export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] } | null }) {
   const strokes = useBoard((s) => s.strokes)
+  const selected = useBoard((s) => s.strokeSelection)
+  const pen = useInk((s) => s.pen)
   // the eraser leaves no trail of its own
   const live = current && current.kind !== 'erase' ? (current as Pick<Stroke, 'kind' | 'points'>) : null
   if (!strokes.length && !live) return null
   return (
-    <svg className="ink" width="1" height="1">
+    <svg className={'ink' + (pen ? '' : ' grabbable')} width="1" height="1">
       {strokes.map((s) => (
-        <g key={s.id}>{strokePath(s)}</g>
+        <g key={s.id} className={selected.includes(s.id) ? 'picked' : undefined}>
+          {strokePath(s)}
+        </g>
       ))}
       {live && <g className="live">{strokePath(live)}</g>}
     </svg>

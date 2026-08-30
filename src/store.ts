@@ -75,6 +75,9 @@ interface BoardState {
   addStroke(s: Omit<Stroke, 'id'>): void
   undoStroke(): void
   removeStrokes(ids: string[]): void
+  moveStrokes(ids: string[], dx: number, dy: number): void
+  strokeSelection: string[]
+  setStrokeSelection(ids: string[]): void
   addAnnotation(a: Omit<Annotation, 'id'>): void
   removeAnnotations(ids: string[]): void
   addGroup(name: string, cardIds: string[], by: string): void
@@ -121,6 +124,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   agentProviders: [],
   agentTools: [],
   deleted: {},
+  strokeSelection: [],
   prefs: { ...DEFAULT_PREFS },
   filters: { mode: 'all', hiddenAgents: [] },
   selection: [],
@@ -361,7 +365,27 @@ export const useBoard = create<BoardState>((set, get) => ({
     const gone = new Set(ids)
     const deleted = { ...get().deleted }
     for (const id of ids) deleted[id] = Date.now()
-    set({ strokes: get().strokes.filter((st) => !gone.has(st.id)), deleted })
+    set({
+      strokes: get().strokes.filter((st) => !gone.has(st.id)),
+      deleted,
+      strokeSelection: get().strokeSelection.filter((id) => !gone.has(id)),
+    })
+  },
+
+  /** Drawings move like cards: shift every point of the chosen strokes. */
+  moveStrokes(ids, dx, dy) {
+    const moving = new Set(ids)
+    set({
+      strokes: get().strokes.map((s) =>
+        moving.has(s.id)
+          ? { ...s, points: s.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
+          : s,
+      ),
+    })
+  },
+
+  setStrokeSelection(ids) {
+    set({ strokeSelection: ids })
   },
 
   addAnnotation(a) {

@@ -1238,3 +1238,37 @@ textarea {
   color: var(--ink-soft);
 }
 .share-link button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* selected drawings read like selected cards */
+.ink .picked path, .ink .picked rect, .ink .picked ellipse {
+  stroke-width: 3.4;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+}
+
+/* ---------- note editor formatting bar ---------- */
+
+.note-tools {
+  display: flex;
+  gap: 1px;
+  margin-bottom: 5px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: var(--shadow);
+  width: fit-content;
+}
+.note-tools button {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+}
+.note-tools button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.note-tools button:nth-child(1) { font-weight: 700; }
+.note-tools button:nth-child(2) { font-style: italic; font-family: var(--serif); }
+.note-tools button:nth-child(6) { font-family: ui-monospace, monospace; font-size: 9.5px; }
