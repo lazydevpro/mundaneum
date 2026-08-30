@@ -18,7 +18,10 @@ export function AgentBar({ onNeedsSetup }: { onNeedsSetup: () => void }) {
   const sayTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hasCards = useBoard((s) => liveCards(s.cards).length > 0)
 
-  if (!hasCards) return null
+  // Zero-setup story stays visually pure: the in-page crew's pill appears
+  // only once a proxy or key is configured (+ menu -> agents…). WebMCP
+  // agents need none of this.
+  if (!hasCards || !PROVIDERS.some(providerConfigured)) return null
 
   const submit = async () => {
     const text = inputRef.current?.value.trim()
