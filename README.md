@@ -72,13 +72,42 @@ accept/reject on hover. Filter: mine only / accepted / pending / per-agent.
   the URL with the local relay host running, and Claude Desktop / Claude Code
   joins the same board over MCP.
 
-## Capture
+## Capture — anything is a card
 
 Paste anything (text, URLs, images — big text dumps split into cards).
 Drop any file. Double-click to write in place. **+** button: note, file,
 sketch (pointer canvas), phone camera (QR opens the board's capture page; a
 tiny 5-minute mail-slot on the worker hops photos to the big screen — not a
 sync backend). Board id in the URL hash, state in IndexedDB. No accounts.
+
+**Links** classify through a provider registry (`src/embed/providers.ts` — one
+table, deliberately the seam a future plugin system would attach to):
+YouTube, Vimeo, Loom, Spotify, Apple Music, SoundCloud, Instagram, TikTok,
+X (quote card), Figma, Google Maps, direct media URLs — everything else
+becomes an article card with a social preview (title · description · image ·
+favicon-line), unfurled progressively: provider-native oEmbed → noembed.com →
+the worker's `/unfurl` (og: tags via HTMLRewriter, edge-cached). Article
+cards carry two hover actions: **✦ summarize** (files a `request_help` any
+connected agent can serve) and **▶ embed live**.
+
+**Files** route by kind: images compress to data URLs; video/audio/3D go into
+a Blob **asset store** (IndexedDB, not data URLs); CSV parses natively;
+XLSX/DOCX parse through lazy-loaded chunks (SheetJS / mammoth never touch the
+main bundle); PDFs open in the built-in viewer. Sheets and docs contribute
+their parsed text to clustering, so a spreadsheet lands near the notes it
+belongs with. 3D drops (`.glb`/`.gltf`) ask: **interactive on the canvas**
+(model-viewer, lazy 1MB chunk) **or a snapshot image** (rendered once
+offscreen, then torn down).
+
+### Heavy embeds: the facade pattern
+
+Every embed renders as a static **face** — thumbnail, mini-table, quote,
+excerpt — which costs nothing. Clicking activates the real thing (YouTube
+player, Spotify widget, `<video>`, 3D viewer) and at most **3 embeds are live
+at once** (LRU — activating a fourth returns the oldest to its face). That's
+what lets "everything is embeddable" coexist with a 150-card canvas. Unfurled
+titles and parsed excerpts also feed the embedding engine, so rich cards
+cluster by meaning, not by URL.
 
 ## Run it
 

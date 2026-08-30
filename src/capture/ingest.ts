@@ -1,26 +1,57 @@
-import type { CardType, XY } from '../types'
+import type { XY } from '../types'
+import { create } from 'zustand'
 import { useBoard } from '../store'
+import { classifyUrl } from '../embed/providers'
+import { enrichCard } from '../embed/unfurl'
+import { MAX_ASSET_BYTES, putAsset } from './assets'
+import { parseDoc, parseSheet } from './filetypes'
 
 /**
- * Capture: anything you can paste or drop becomes cards. No structure asked
- * for at capture time — organizing is the agents' job.
+ * Capture: anything you can paste or drop becomes a card. URLs classify
+ * through the provider registry (video/audio/social/article…); files route
+ * by kind — media and models into the Blob asset store, sheets and docs
+ * through lazy-loaded parsers so their text feeds clustering.
  */
 
 const URL_RE = /^https?:\/\/\S+$/i
-const VIDEO_HOSTS = /(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com)/i
 
-export function classifyUrl(url: string): CardType {
-  return VIDEO_HOSTS.test(url) ? 'video' : 'link'
+/** 3D drops wait on a human choice: interactive on-canvas, or a snapshot. */
+interface PendingModel {
+  file: File
+  at?: XY
+}
+interface PendingModelState {
+  queue: PendingModel[]
+  push(p: PendingModel): void
+  shift(): void
+}
+export const usePendingModels = create<PendingModelState>((set, get) => ({
+  queue: [],
+  push(p) {
+    set({ queue: [...get().queue, p] })
+  },
+  shift() {
+    set({ queue: get().queue.slice(1) })
+  },
+}))
+
+export function ingestUrl(url: string, at?: XY): void {
+  const c = classifyUrl(url)
+  const store = useBoard.getState()
+  const [card] = store.addCards(
+    [{ content: url, type: c.type, meta: c.meta, at }],
+    'human',
+  )
+  if (c.needsUnfurl) enrichCard(card.id)
 }
 
 /** Paragraph-split large dumps so a wall of paste becomes a pile of cards. */
 export function ingestText(text: string, at?: XY): number {
   const trimmed = text.trim()
   if (!trimmed) return 0
-  const store = useBoard.getState()
 
-  if (URL_RE.test(trimmed)) {
-    store.addCards([{ content: trimmed, type: classifyUrl(trimmed) }], 'human')
+  if (URL_RE.test(trimmed) && !/\s/.test(trimmed)) {
+    ingestUrl(trimmed, at)
     return 1
   }
 
@@ -28,45 +59,117 @@ export function ingestText(text: string, at?: XY): number {
     .split(/\n\s*\n+/)
     .map((p) => p.trim())
     .filter(Boolean)
-  const items =
-    paragraphs.length > 2
-      ? paragraphs.map((p) => lineToItem(p))
-      : [lineToItem(trimmed)]
-  store.addCards(items.slice(0, 80).map((it) => ({ ...it, at })), 'human')
-  return items.length
+  const chunks = paragraphs.length > 2 ? paragraphs : [trimmed]
+  let n = 0
+  for (const p of chunks.slice(0, 80)) {
+    if (URL_RE.test(p) && !/\s/.test(p)) ingestUrl(p, at)
+    else useBoard.getState().addCards([{ content: p.slice(0, 4000), at }], 'human')
+    n++
+  }
+  return n
 }
 
-function lineToItem(p: string): { content: string; type: CardType } {
-  const single = p.split('\n').length === 1 && URL_RE.test(p)
-  return single
-    ? { content: p, type: classifyUrl(p) }
-    : { content: p.slice(0, 4000), type: 'text' }
-}
+const SHEET_RE = /\.(csv|tsv|xlsx|xls|ods)$/i
+const DOC_RE = /\.(docx)$/i
+const MODEL_RE = /\.(glb|gltf)$/i
+const TEXTY_RE = /\.(md|txt|json|log|yml|yaml|toml)$/i
 
 export async function ingestFiles(files: FileList | File[], at?: XY): Promise<number> {
   const store = useBoard.getState()
   let n = 0
   for (const file of Array.from(files).slice(0, 24)) {
     try {
+      if (file.size > MAX_ASSET_BYTES) {
+        store.logActivity('human', 'skipped ' + file.name + ' — over ' + Math.round(MAX_ASSET_BYTES / 1e6) + ' MB')
+        continue
+      }
+
       if (file.type.startsWith('image/')) {
         const dataUrl = await compressImage(file)
         store.addCards([{ content: dataUrl, type: 'image', title: cleanName(file.name), at }], 'human')
         n++
-      } else if (
-        file.type.startsWith('text/') ||
-        /\.(md|txt|csv|json)$/i.test(file.name)
-      ) {
-        const text = await file.text()
-        n += ingestText(text.slice(0, 20000), at)
       } else if (file.type.startsWith('video/')) {
+        const asset = await putAsset(file)
         store.addCards(
-          [{ content: file.name, type: 'video', title: cleanName(file.name), at }],
+          [{
+            content: cleanName(file.name),
+            type: 'video',
+            title: cleanName(file.name),
+            meta: { asset, filename: file.name, provider: 'file' },
+            at,
+          }],
           'human',
         )
         n++
+      } else if (file.type.startsWith('audio/')) {
+        const asset = await putAsset(file)
+        store.addCards(
+          [{
+            content: cleanName(file.name),
+            type: 'audio',
+            title: cleanName(file.name),
+            meta: { asset, filename: file.name, provider: 'file' },
+            at,
+          }],
+          'human',
+        )
+        n++
+      } else if (MODEL_RE.test(file.name)) {
+        usePendingModels.getState().push({ file, at })
+        n++
+      } else if (SHEET_RE.test(file.name)) {
+        const asset = await putAsset(file)
+        const parsed = await parseSheet(file, file.name).catch(() => null)
+        store.addCards(
+          [{
+            content: parsed?.textSample ?? file.name,
+            type: 'sheet',
+            title: cleanName(file.name),
+            meta: { asset, filename: file.name, preview: parsed?.preview },
+            at,
+          }],
+          'human',
+        )
+        n++
+      } else if (DOC_RE.test(file.name)) {
+        const asset = await putAsset(file)
+        const parsed = await parseDoc(file).catch(() => null)
+        store.addCards(
+          [{
+            content: parsed?.excerpt ?? file.name,
+            type: 'doc',
+            title: cleanName(file.name),
+            meta: { asset, filename: file.name },
+            at,
+          }],
+          'human',
+        )
+        n++
+      } else if (file.type === 'application/pdf') {
+        const asset = await putAsset(file)
+        store.addCards(
+          [{
+            content: cleanName(file.name),
+            type: 'doc',
+            title: cleanName(file.name),
+            meta: { asset, filename: file.name },
+            at,
+          }],
+          'human',
+        )
+        n++
+      } else if (file.type.startsWith('text/') || TEXTY_RE.test(file.name)) {
+        const text = await file.text()
+        n += ingestText(text.slice(0, 20000), at)
       } else {
         store.addCards(
-          [{ content: file.name + ' (' + fmtSize(file.size) + ')', type: 'file', title: cleanName(file.name), at }],
+          [{
+            content: file.name + ' (' + fmtSize(file.size) + ')',
+            type: 'file',
+            title: cleanName(file.name),
+            meta: { filename: file.name },
+            at,
+          }],
           'human',
         )
         n++
@@ -76,6 +179,22 @@ export async function ingestFiles(files: FileList | File[], at?: XY): Promise<nu
     }
   }
   return n
+}
+
+/** Called by the model-choice dialog once the human picks a mode. */
+export async function ingestModel(p: PendingModel, mode: 'live' | 'face'): Promise<void> {
+  const asset = await putAsset(p.file)
+  useBoard.getState().addCards(
+    [{
+      content: cleanName(p.file.name),
+      type: 'model',
+      title: cleanName(p.file.name),
+      meta: { asset, filename: p.file.name },
+      embedMode: mode,
+      at: p.at,
+    }],
+    'human',
+  )
 }
 
 function cleanName(name: string): string {

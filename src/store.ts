@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type {
-  Card, CardType, Cluster, EngineStatus, LabelAssignment, Link, ProvenanceFilter, XY,
+  Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment, Link, ProvenanceFilter, XY,
 } from './types'
+import { deleteAsset } from './capture/assets'
 import { currentBoardId, newId } from './boardId'
 
 export interface AgentActivity {
@@ -33,6 +34,8 @@ interface BoardState {
       content: string
       type?: CardType
       title?: string
+      meta?: CardMeta
+      embedMode?: 'face' | 'live'
       needs?: string
       forCard?: string
       at?: XY
@@ -104,6 +107,8 @@ export const useBoard = create<BoardState>((set, get) => ({
         type: it.type ?? 'text',
         content: it.content,
         title: it.title,
+        meta: it.meta,
+        embedMode: it.embedMode,
         addedBy: by,
         addedAt: Date.now() + seq++,
         accepted: by === 'human',
@@ -139,6 +144,8 @@ export const useBoard = create<BoardState>((set, get) => ({
     const cards = { ...get().cards }
     const positions = { ...get().positions }
     const links = { ...get().links }
+    const asset = cards[id]?.meta?.asset
+    if (asset) void deleteAsset(asset)
     delete cards[id]
     delete positions[id]
     for (const [lid, l] of Object.entries(links)) {
@@ -216,9 +223,12 @@ export const useBoard = create<BoardState>((set, get) => ({
     labels.push({ label, labeledBy: by, cardIds: [...cluster.cardIds] })
     set({
       labels,
-      clusters: get().clusters.map((c) =>
-        c.id === clusterId ? { ...c, label, labeledBy: by } : c,
-      ),
+      // One name, one cluster: a label moves if reused elsewhere.
+      clusters: get().clusters.map((c) => {
+        if (c.id === clusterId) return { ...c, label, labeledBy: by }
+        if (c.label === label) return { ...c, label: undefined, labeledBy: undefined }
+        return c
+      }),
     })
     return true
   },

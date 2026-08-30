@@ -10,15 +10,19 @@ import { AgentBar } from './ui/AgentBar'
 import { Brand, CornerControls, StatusLine } from './ui/Chrome'
 import { PlusMenu, type ModalKind } from './ui/PlusMenu'
 import { Modals } from './ui/Modals'
+import { ModelChoiceModal, ViewerModal } from './ui/Viewers'
 import { CapturePage } from './ui/CapturePage'
 import { maybeLoadRelay } from './mcp/relay'
+import { classifyUrl } from './embed/providers'
+import { enrichCard } from './embed/unfurl'
 import { callTool } from './mcp/registry'
+import { useActive } from './embed/active'
 import { latestGraph, organize } from './engine/engine'
 
 // Dev/demo handle: lets you poke the same tool surface agents use.
 if (import.meta.env.DEV) {
   Object.assign(window as object, {
-    __mundaneum: { useBoard, callTool, organize, latestGraph },
+    __mundaneum: { useBoard, callTool, organize, latestGraph, useActive },
   })
 }
 
@@ -34,6 +38,20 @@ export default function App() {
       // Tools registered in the top-level page, after state exists.
       setWebmcp(startWebMcp())
       maybeLoadRelay()
+      // Migration: URL cards from before the provider registry (or added by
+      // agents/tools without classification) get faces + enrichment now.
+      {
+        const s = useBoard.getState()
+        for (const c of Object.values(s.cards)) {
+          if (!/^https?:\/\//.test(c.content) || c.meta?.unfurled) continue
+          const cls = classifyUrl(c.content)
+          s.updateCard(c.id, {
+            type: cls.type,
+            meta: { ...cls.meta, ...c.meta },
+          })
+          enrichCard(c.id)
+        }
+      }
       // Structure is derived state: boards that were organized before get
       // their clusters (and reattached labels) recomputed quietly.
       const s = useBoard.getState()
@@ -60,6 +78,8 @@ export default function App() {
       <PlusMenu openModal={setModal} />
       <AgentBar onNeedsSetup={() => setModal('settings')} />
       <Modals kind={modal} close={() => setModal(null)} />
+      <ViewerModal />
+      <ModelChoiceModal />
     </>
   )
 }

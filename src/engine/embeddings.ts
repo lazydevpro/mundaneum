@@ -50,15 +50,26 @@ function hash(s: string): string {
   return (h >>> 0).toString(36) + ':' + s.length
 }
 
-/** Text an embedding sees for a card: title + content for text; title/URL for media. */
+/** Text an embedding sees for a card. Unfurled titles/descriptions and parsed
+ *  file excerpts make links and documents cluster by MEANING, not by URL. */
 export function embeddableText(card: Card): string {
-  const title = card.title ? card.title + '. ' : ''
-  if (card.type === 'text') return (title + card.content).slice(0, 512)
-  if (card.type === 'link' || card.type === 'video') {
-    return (title + card.content.replace(/^https?:\/\//, '').replace(/[/_-]+/g, ' ')).slice(0, 512)
+  const bits: Array<string | undefined> = [card.title, card.meta?.title, card.meta?.description]
+  if (card.type === 'text' || card.type === 'sheet' || card.type === 'doc') {
+    bits.push(card.content)
+  } else if (/^https?:\/\//.test(card.content)) {
+    bits.push(card.content.replace(/^https?:\/\//, '').replace(/[/_-]+/g, ' '))
+  } else {
+    bits.push(card.meta?.filename ?? card.type)
   }
-  // Images/sketches/files: embed whatever human-readable signal exists.
-  return (title + (card.title ?? card.type)).slice(0, 512)
+  const seen = new Set<string>()
+  return bits
+    .filter((b): b is string => {
+      if (!b || seen.has(b)) return false
+      seen.add(b)
+      return true
+    })
+    .join('. ')
+    .slice(0, 512)
 }
 
 /**

@@ -90,9 +90,21 @@ export function Canvas() {
         y: 40 + availH / 2 - ((minY + maxY) / 2) * k,
       })
     }
+    const focusCard = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      const p = useBoard.getState().positions[id]
+      if (!p) return
+      setView({ k: 1, x: window.innerWidth / 2 - p.x, y: window.innerHeight / 2 - p.y })
+    }
     fit()
     engineEvents.addEventListener('organized', fit)
-    return () => engineEvents.removeEventListener('organized', fit)
+    window.addEventListener('mundaneum:fit', fit)
+    window.addEventListener('mundaneum:focus-card', focusCard)
+    return () => {
+      engineEvents.removeEventListener('organized', fit)
+      window.removeEventListener('mundaneum:fit', fit)
+      window.removeEventListener('mundaneum:focus-card', focusCard)
+    }
   }, [])
 
   // ---- wheel: pan; ctrl/cmd+wheel or pinch: zoom around cursor ----

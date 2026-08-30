@@ -2,6 +2,8 @@ import type { Card, CardType } from '../types'
 import { liveCards, useBoard } from '../store'
 import { clusterTerms, duplicatePairs, latestGraph, organize, scheduleOrganize } from '../engine/engine'
 import { spatial } from '../engine/spatial'
+import { classifyUrl } from '../embed/providers'
+import { enrichCard } from '../embed/unfurl'
 import { defineTool } from './registry'
 
 /** Common `agent` property — every contribution is signed by WHICH agent. */
@@ -154,15 +156,33 @@ export function registerBoardTools(): void {
       if (!items.length) return JSON.stringify({ error: 'items is empty' })
       const s = useBoard.getState()
       const created = s.addCards(
-        items.slice(0, 25).map((it) => ({
-          content: String(it.content ?? '').slice(0, 4000),
-          type: (['text', 'link', 'video'].includes(String(it.type)) ? it.type : 'text') as CardType,
-          title: it.title ? String(it.title).slice(0, 140) : undefined,
-          needs: it.needs ? String(it.needs).slice(0, 200) : undefined,
-          forCard: it.for_card ? String(it.for_card) : undefined,
-        })),
+        items.slice(0, 25).map((it) => {
+          const content = String(it.content ?? '').slice(0, 4000)
+          // Agent-contributed URLs get the same rich treatment as pasted ones.
+          if (/^https?:\/\/\S+$/.test(content)) {
+            const c = classifyUrl(content)
+            return {
+              content,
+              type: c.type,
+              meta: c.meta,
+              title: it.title ? String(it.title).slice(0, 140) : undefined,
+              needs: it.needs ? String(it.needs).slice(0, 200) : undefined,
+              forCard: it.for_card ? String(it.for_card) : undefined,
+            }
+          }
+          return {
+            content,
+            type: (['text', 'link', 'video'].includes(String(it.type)) ? it.type : 'text') as CardType,
+            title: it.title ? String(it.title).slice(0, 140) : undefined,
+            needs: it.needs ? String(it.needs).slice(0, 200) : undefined,
+            forCard: it.for_card ? String(it.for_card) : undefined,
+          }
+        }),
         agent,
       )
+      for (const c of created) {
+        if (/^https?:\/\//.test(c.content)) enrichCard(c.id)
+      }
       s.logActivity(agent, 'added ' + created.length + ' card' + (created.length > 1 ? 's' : ''))
       scheduleOrganize()
       return JSON.stringify({

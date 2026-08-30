@@ -14,15 +14,18 @@
     "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@google/model-viewer": "^4.3.1",
     "@huggingface/transformers": "^3.7.6",
     "d3-force": "^3.0.0",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "idb-keyval": "^6.2.2",
+    "mammoth": "^1.12.2",
     "qrcode": "^1.5.4",
     "rbush": "^4.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

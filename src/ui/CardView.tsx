@@ -2,6 +2,8 @@ import { memo } from 'react'
 import type { Card, XY } from '../types'
 import { agentMark } from '../agents/identity'
 import { useBoard } from '../store'
+import { EmbedBody } from '../embed/EmbedBody'
+import { cardWidth } from '../embed/dims'
 
 /**
  * Provenance is the visual system, legible at 480p:
@@ -10,13 +12,7 @@ import { useBoard } from '../store'
  *  - agent card, pending   -> dashed border + mark, hover to accept/reject
  */
 
-function host(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url.slice(0, 40)
-  }
-}
+const EMBED_TYPES = new Set(['link', 'video', 'audio', 'social', 'sheet', 'doc', 'model', 'file'])
 
 export const CardView = memo(function CardView({
   card,
@@ -35,6 +31,7 @@ export const CardView = memo(function CardView({
   const mark = agentMark(card.addedBy)
   const cls = [
     'card',
+    'type-' + card.type,
     fromAgent && !card.accepted ? 'provisional' : '',
     selected ? 'selected' : '',
     dragging ? 'dragging' : '',
@@ -46,7 +43,7 @@ export const CardView = memo(function CardView({
   return (
     <div
       className={cls}
-      style={{ left: pos.x, top: pos.y }}
+      style={{ left: pos.x, top: pos.y, width: cardWidth(card) }}
       data-card={card.id}
       onPointerDown={(e) => onPointerDown(e, card.id)}
       title={fromAgent ? 'added by ' + mark.label + (card.accepted ? '' : ' — provisional') : undefined}
@@ -56,27 +53,8 @@ export const CardView = memo(function CardView({
           <img src={card.content} alt={card.title ?? card.type} draggable={false} />
           {card.title && <div className="body">{card.title}</div>}
         </>
-      ) : card.type === 'video' ? (
-        <>
-          <div className="video-face">▶</div>
-          <div className="title">{card.title ?? 'video'}</div>
-          <div className="host">{host(card.content)}</div>
-        </>
-      ) : card.type === 'link' ? (
-        <div className="linkline">
-          <div>
-            {card.title && <div className="title">{card.title}</div>}
-            <div className="body" style={{ WebkitLineClamp: 3 }}>
-              {card.content}
-            </div>
-            <div className="host">{host(card.content)}</div>
-          </div>
-        </div>
-      ) : card.type === 'file' ? (
-        <>
-          <div className="title">⌘ {card.title ?? 'file'}</div>
-          <div className="host">{card.content}</div>
-        </>
+      ) : EMBED_TYPES.has(card.type) ? (
+        <EmbedBody card={card} />
       ) : (
         <>
           {card.title && <div className="title">{card.title}</div>}

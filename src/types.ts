@@ -1,10 +1,39 @@
-export type CardType = 'text' | 'image' | 'link' | 'sketch' | 'file' | 'video'
+export type CardType =
+  | 'text'
+  | 'image'
+  | 'sketch'
+  | 'link' // article / generic URL, social-preview face
+  | 'video' // YouTube/Vimeo/Loom/… or a dropped video file
+  | 'audio' // Spotify/Apple Music/SoundCloud/… or a dropped audio file
+  | 'social' // Instagram/TikTok/X post
+  | 'model' // 3D file (glb/gltf)
+  | 'sheet' // csv/xlsx
+  | 'doc' // docx/rtf-ish
+  | 'file' // anything else
+
+/** Unfurled metadata for URL cards; parsed preview for file cards. */
+export interface CardMeta {
+  title?: string
+  description?: string
+  image?: string // face thumbnail (url or data url)
+  site?: string // "YouTube", "The Verge"
+  provider?: string // registry key: 'youtube', 'spotify', 'article', …
+  embedUrl?: string // what the live iframe loads
+  asset?: string // asset store id for dropped files
+  filename?: string
+  preview?: string[][] // small table preview for sheets
+  unfurled?: boolean // enrichment finished (ok or gave up)
+}
 
 export interface Card {
   id: string
   type: CardType
   content: string // text body, URL, or data URL for images/sketches
   title?: string
+  meta?: CardMeta
+  /** face = static preview (cheap); live = real iframe/video/3D (capped). */
+  embedMode?: 'face' | 'live'
+  poster?: string // captured snapshot for model/video faces
   addedBy: string // 'human' or an agent name ('claude', 'gemini', 'chatgpt', …)
   addedAt: number
   accepted: boolean // human cards are born accepted; agent cards are provisional

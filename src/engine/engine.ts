@@ -5,13 +5,11 @@ import { buildGraph, duplicateCandidates, topTerms, type BoardGraph } from './gr
 import { runLayout, type LayoutNode } from './layout'
 import { spatial } from './spatial'
 
+import { cardDims } from '../embed/dims'
+
 /** Card footprint used by collision + the spatial index; mirrors CardView CSS. */
 export function cardSize(card: Card): { w: number; h: number } {
-  const w = 224
-  if (card.type === 'image' || card.type === 'sketch') return { w, h: 180 }
-  if (card.type === 'video') return { w, h: 150 }
-  const chars = (card.title?.length ?? 0) + Math.min(card.content.length, 420)
-  return { w, h: Math.min(46 + Math.ceil(chars / 34) * 18, 260) }
+  return cardDims(card)
 }
 
 let latest: BoardGraph | null = null

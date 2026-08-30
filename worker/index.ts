@@ -99,6 +99,13 @@ export default {
         return new Response(upstream.body, { status: upstream.status, headers })
       }
 
+      if (url.pathname === '/unfurl' && req.method === 'GET') {
+        const target = url.searchParams.get('url') ?? ''
+        if (!/^https?:\/\//.test(target)) return json({ error: 'bad url' }, 400, headers)
+        const meta = await unfurl(target)
+        return json(meta, 200, { ...headers, 'cache-control': 'public, max-age=86400' })
+      }
+
       const drop = url.pathname.match(/^\/drop\/([a-z0-9-]{1,40})$/i)
       if (drop) {
         const boardKey = 'drop:' + drop[1]
@@ -140,4 +147,77 @@ export default {
       return json({ error: String(err) }, 500, headers)
     }
   },
+}
+
+/**
+ * Server-side og:/twitter: tag extraction — the piece the browser cannot do
+ * cross-origin. HTMLRewriter streams the page; we stop caring after <head>.
+ */
+async function unfurl(target: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  let res: Response
+  try {
+    res = await fetch(target, {
+      redirect: 'follow',
+      headers: {
+        'user-agent': 'Mozilla/5.0 (compatible; MundaneumUnfurl/1.0; +https://github.com)',
+        accept: 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch {
+    return out
+  }
+  if (!res.ok || !(res.headers.get('content-type') ?? '').includes('html')) return out
+
+  let title = ''
+  const grab = (k: keyof typeof out & string) => ({
+    element(el: { getAttribute(n: string): string | null }) {
+      const v = el.getAttribute('content')
+      if (v && !out[k]) out[k] = v.slice(0, 500)
+    },
+  })
+
+  const rewriter = new HTMLRewriter()
+    .on('meta[property="og:title"]', grab('title'))
+    .on('meta[name="twitter:title"]', grab('title'))
+    .on('meta[property="og:description"]', grab('description'))
+    .on('meta[name="description"]', grab('description'))
+    .on('meta[name="twitter:description"]', grab('description'))
+    .on('meta[property="og:image"]', grab('image'))
+    .on('meta[name="twitter:image"]', grab('image'))
+    .on('meta[property="og:site_name"]', grab('site'))
+    .on('title', {
+      text(t: { text: string }) {
+        if (title.length < 300) title += t.text
+      },
+    })
+
+  // Read at most ~200KB of the page through the rewriter.
+  const transformed = rewriter.transform(res)
+  const reader = transformed.body?.getReader()
+  if (reader) {
+    let got = 0
+    while (got < 200_000) {
+      const { done, value } = await reader.read()
+      if (done) break
+      got += value?.length ?? 0
+    }
+    await reader.cancel().catch(() => undefined)
+  }
+
+  if (!out.title && title.trim()) out.title = title.trim().slice(0, 300)
+  if (out.image && out.image.startsWith('/')) {
+    try {
+      out.image = new URL(out.image, target).href
+    } catch {
+      delete out.image
+    }
+  }
+  return out
+}
+
+declare class HTMLRewriter {
+  on(selector: string, handlers: Record<string, unknown>): HTMLRewriter
+  transform(res: Response): Response
 }
