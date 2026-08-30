@@ -56,7 +56,80 @@ async function internImage(raw: string): Promise<string> {
   } catch {
     /* keep the original reference */
   }
+  // data URLs stay whole (SVG data URLs often exceed any excerpt cap)
+  if (raw.startsWith('data:image/')) return raw.slice(0, 2_000_000)
   return raw.slice(0, 2000)
+}
+
+/** Rasterize agent strokes (100x75 local space) into a sketch-card PNG. */
+function renderSketch(strokes: Array<Record<string, unknown>>): string | null {
+  const W = 640
+  const H = 480
+  const SX = W / 100
+  const SY = H / 75
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const g = canvas.getContext('2d')!
+  const ink =
+    getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c96442'
+  g.strokeStyle = ink
+  g.lineWidth = 4
+  g.lineCap = 'round'
+  g.lineJoin = 'round'
+
+  const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi, v))
+  let drew = false
+  for (const st of strokes) {
+    const raw = (st.points as unknown[][] | undefined) ?? []
+    const pts = raw
+      .filter((p) => Array.isArray(p) && p.length >= 2)
+      .slice(0, 500)
+      .map((p) => ({ x: clamp(Number(p[0]), 100) * SX, y: clamp(Number(p[1]), 75) * SY }))
+    if (pts.length < 2) continue
+    const a = pts[0]
+    const b = pts[pts.length - 1]
+    g.beginPath()
+    switch (String(st.kind)) {
+      case 'draw':
+        g.moveTo(a.x, a.y)
+        for (const p of pts.slice(1)) g.lineTo(p.x, p.y)
+        break
+      case 'line':
+        g.moveTo(a.x, a.y)
+        g.lineTo(b.x, b.y)
+        break
+      case 'arrow': {
+        g.moveTo(a.x, a.y)
+        g.lineTo(b.x, b.y)
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const len = Math.hypot(dx, dy) || 1
+        const ux = dx / len
+        const uy = dy / len
+        const sz = 16
+        g.moveTo(b.x - sz * ux + sz * 0.55 * uy, b.y - sz * uy - sz * 0.55 * ux)
+        g.lineTo(b.x, b.y)
+        g.lineTo(b.x - sz * ux - sz * 0.55 * uy, b.y - sz * uy + sz * 0.55 * ux)
+        break
+      }
+      case 'rect':
+        g.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
+        break
+      case 'ellipse':
+        g.ellipse(
+          (a.x + b.x) / 2, (a.y + b.y) / 2,
+          Math.abs(b.x - a.x) / 2 || 1, Math.abs(b.y - a.y) / 2 || 1,
+          0, 0, Math.PI * 2,
+        )
+        break
+      default:
+        continue
+    }
+    g.stroke()
+    drew = true
+  }
+  return drew ? canvas.toDataURL('image/png') : null
 }
 
 export function registerBoardTools(): void {
@@ -549,6 +622,58 @@ export function registerBoardTools(): void {
       })
       st.logActivity(agent, 'drew a ' + kind + ' around ' + ids.length + ' card' + (ids.length > 1 ? 's' : ''))
       return JSON.stringify({ ok: true, kind, around: ids.length })
+    },
+  })
+
+  // -------------------------------------------------------------- draw_sketch
+  defineTool({
+    name: 'draw_sketch',
+    title: 'Draw a sketch',
+    description:
+      'Freehand drawing: draw on your OWN canvas — a 100x75 space with (0,0) top-left — using strokes (draw = polyline, line, rect, ellipse, arrow; each point is [x, y] in that space). The page renders your strokes into a sketch card and decides where it lands on the board, like any other card. Good for diagrams, icons, illustrations. Give it a title and description so it clusters by meaning.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        strokes: {
+          type: 'array',
+          maxItems: 200,
+          items: {
+            type: 'object',
+            properties: {
+              kind: { type: 'string', enum: ['draw', 'line', 'rect', 'ellipse', 'arrow'] },
+              points: {
+                type: 'array',
+                description: 'Points as [x, y] pairs in the 100x75 sketch space. draw: the full polyline; line/rect/ellipse/arrow: [start, end].',
+                items: { type: 'array', items: { type: 'number' } },
+              },
+            },
+            required: ['kind', 'points'],
+          },
+        },
+        title: { type: 'string' },
+        description: { type: 'string', description: 'One line on what the sketch shows.' },
+        ...agentProp,
+      },
+      required: ['strokes'],
+    },
+    execute: (input, { agent }) => {
+      const strokes = ((input.strokes as Array<Record<string, unknown>> | undefined) ?? []).slice(0, 200)
+      if (!strokes.length) return JSON.stringify({ error: 'strokes is empty' })
+      const dataUrl = renderSketch(strokes)
+      if (!dataUrl) return JSON.stringify({ error: 'no drawable strokes' })
+      const s = useBoard.getState()
+      const [card] = s.addCards(
+        [{
+          content: dataUrl,
+          type: 'sketch',
+          title: input.title ? String(input.title).slice(0, 140) : undefined,
+          meta: { description: input.description ? String(input.description).slice(0, 300) : undefined },
+        }],
+        agent,
+      )
+      s.logActivity(agent, 'drew a sketch' + (input.title ? ': "' + String(input.title).slice(0, 40) + '"' : ''))
+      scheduleOrganize()
+      return JSON.stringify({ ok: true, card: card.id, note: 'Provisional until the human accepts it. The page placed it.' })
     },
   })
 
