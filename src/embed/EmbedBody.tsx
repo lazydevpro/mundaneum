@@ -265,6 +265,9 @@ function LiveInner({ card }: { card: Card }) {
   }
 
   const src = meta.embedUrl ?? card.content
+  // Fixed-size provider widgets must never show scrollbars; live article
+  // pages are real pages and keep theirs.
+  const isWidget = card.type === 'video' || card.type === 'audio' || card.type === 'social'
   return (
     <iframe
       src={src}
@@ -273,6 +276,7 @@ function LiveInner({ card }: { card: Card }) {
       allow={IFRAME_ALLOW}
       referrerPolicy="strict-origin-when-cross-origin"
       loading="lazy"
+      scrolling={isWidget ? 'no' : undefined}
     />
   )
 }
