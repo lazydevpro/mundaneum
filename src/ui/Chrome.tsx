@@ -73,6 +73,7 @@ const ARRANGEMENTS: Array<[Arrangement, string]> = [
   ['grid', 'grid'],
   ['row', 'one row'],
   ['column', 'one column'],
+  ['tree', 'tree — from the links'],
 ]
 
 export function CornerControls() {
@@ -138,6 +139,22 @@ export function CornerControls() {
                 key={mode}
                 className={'row' + (prefs.arrangement === mode ? ' on' : '')}
                 onClick={() => applyArrangement(mode)}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="sep" />
+            <div className="head">toolbar</div>
+            {(
+              [
+                ['hidden', 'on demand'],
+                ['pinned', 'pinned — whiteboard'],
+              ] as Array<['hidden' | 'pinned', string]>
+            ).map(([tb, label]) => (
+              <button
+                key={tb}
+                className={'row' + ((prefs.toolbar ?? 'hidden') === tb ? ' on' : '')}
+                onClick={() => useBoard.getState().setPrefs({ toolbar: tb })}
               >
                 {label}
               </button>

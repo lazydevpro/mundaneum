@@ -77,16 +77,18 @@ export interface XY {
 /** On-canvas ink: freehand and shapes. Pure geometry — never exposed to agents. */
 export interface Stroke {
   id: string
-  kind: 'draw' | 'line' | 'rect' | 'ellipse'
+  kind: 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow'
   points: XY[] // draw: polyline; line/rect/ellipse: [start, end]
 }
 
 export type CardStyle = 'pure' | 'cards'
-export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column'
+export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column' | 'tree'
 
 export interface ViewPrefs {
   style: CardStyle
   arrangement: Arrangement
+  /** pinned = the whiteboard feel: the tool rail is always on screen. */
+  toolbar?: 'hidden' | 'pinned'
 }
 
 export type EngineStatus = 'cold' | 'warming' | 'ready' | 'embedding' | 'organizing'

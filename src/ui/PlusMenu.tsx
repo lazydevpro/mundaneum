@@ -31,7 +31,7 @@ const ITEMS: Item[] = [
 const STACKS: Record<string, string[]> = {
   everything: ['note', 'file', 'draw', 'phone', 'organize'],
   researcher: ['note', 'file', 'phone', 'organize'],
-  sketcher: ['note', 'draw', 'organize'],
+  whiteboard: ['note', 'draw', 'organize'],
 }
 
 function loadStack(): string[] {
@@ -116,6 +116,10 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
                   className="plus-item"
                   onClick={() => {
                     setStack(STACKS[name])
+                    // the whiteboard preset pins the tool rail on screen
+                    useBoard.getState().setPrefs({
+                      toolbar: name === 'whiteboard' ? 'pinned' : 'hidden',
+                    })
                     setCustomize(false)
                   }}
                 >

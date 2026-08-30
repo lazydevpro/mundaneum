@@ -124,7 +124,12 @@ function applyGeometry(cards: Card[], byCommunity: Map<number, Card[]>): void {
       : []
     positions = runLayout(nodes, edges).positions
   } else {
-    positions = arrangePositions(cards, mode, (id) => latest?.communities.get(id))
+    positions = arrangePositions(
+      cards,
+      mode,
+      (id) => latest?.communities.get(id),
+      Object.values(useBoard.getState().links),
+    )
   }
 
   const clusters: Cluster[] = [...byCommunity.entries()]

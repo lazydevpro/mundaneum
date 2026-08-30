@@ -65,6 +65,7 @@ interface BoardState {
   logActivity(agent: string, text: string): void
   renameBoard(name: string): void
   replaceBoard(data: Persisted): void
+  removeLink(id: string): void
   addStroke(s: Omit<Stroke, 'id'>): void
   undoStroke(): void
   setPrefs(p: Partial<ViewPrefs>): void
@@ -80,7 +81,7 @@ export interface Persisted {
   prefs?: ViewPrefs
 }
 
-const DEFAULT_PREFS: ViewPrefs = { style: 'pure', arrangement: 'clusters' }
+const DEFAULT_PREFS: ViewPrefs = { style: 'pure', arrangement: 'clusters', toolbar: 'hidden' }
 
 /** New cards land near the current viewport center; the canvas registers this. */
 export const dropTarget: { current: () => XY } = {
@@ -310,6 +311,12 @@ export const useBoard = create<BoardState>((set, get) => ({
       clusters: [],
       selection: [],
     })
+  },
+
+  removeLink(id) {
+    const links = { ...get().links }
+    delete links[id]
+    set({ links })
   },
 
   addStroke(stroke) {

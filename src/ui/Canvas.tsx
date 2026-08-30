@@ -225,11 +225,40 @@ export function Canvas() {
     }
   }
 
+  const cardAt = (p: XY): string | null => {
+    const st = useBoard.getState()
+    for (const c of visibleCards(st)) {
+      const pos = st.positions[c.id]
+      if (!pos) continue
+      const { w, h } = cardSize(c)
+      if (Math.abs(p.x - pos.x) <= w / 2 && Math.abs(p.y - pos.y) <= h / 2) return c.id
+    }
+    return null
+  }
+
   const onUp = () => {
     const g = gesture.current
     if (g.mode === 'ink') {
       if (currentInk && currentInk.points.length > 1 && g.moved) {
-        useBoard.getState().addStroke({ kind: currentInk.kind, points: currentInk.points })
+        let inked = true
+        if (currentInk.kind === 'arrow') {
+          // Arrow landing on two cards is a relation, not ink — the same
+          // link agents assert with link_cards, signed by the human.
+          const a = currentInk.points[0]
+          const b = currentInk.points[currentInk.points.length - 1]
+          const from = cardAt(a)
+          const to = cardAt(b)
+          if (from && to && from !== to) {
+            useBoard.getState().addLinks(
+              [{ from, to, why: 'connected by hand', directed: true }],
+              'human',
+            )
+            inked = false
+          }
+        }
+        if (inked) {
+          useBoard.getState().addStroke({ kind: currentInk.kind, points: currentInk.points })
+        }
       }
       setCurrentInk(null)
     } else if (g.mode === 'lasso' && lasso && lasso.length > 2) {
@@ -314,15 +343,43 @@ export function Canvas() {
 
       <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <svg className="links" width="1" height="1">
+          <defs>
+            <marker
+              id="mund-arrow"
+              markerUnits="userSpaceOnUse"
+              markerWidth="16"
+              markerHeight="16"
+              refX="11"
+              refY="8"
+              orient="auto"
+            >
+              <path d="M3 3 L11 8 L3 13" fill="none" stroke="context-stroke" strokeWidth="2" />
+            </marker>
+          </defs>
           {linkList.map((l) => {
             const a = positions[l.from]
             const b = positions[l.to]
-            const mx = (a.x + b.x) / 2
-            const my = (a.y + b.y) / 2 - Math.min(60, Math.hypot(b.x - a.x, b.y - a.y) * 0.12)
+            const cardB = useBoard.getState().cards[l.to]
+            // Pull the tip out from under the target card so the head shows.
+            const trim = cardB ? Math.max(...Object.values(cardSize(cardB))) / 2 + 14 : 0
+            const dx = b.x - a.x
+            const dy = b.y - a.y
+            const len = Math.hypot(dx, dy) || 1
+            const bx = l.directed ? b.x - (dx / len) * Math.min(trim, len * 0.4) : b.x
+            const by = l.directed ? b.y - (dy / len) * Math.min(trim, len * 0.4) : b.y
+            const mx = (a.x + bx) / 2
+            const my = (a.y + by) / 2 - Math.min(60, len * 0.12)
             return (
-              <path key={l.id} d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}>
+              <path
+                key={l.id}
+                d={`M ${a.x} ${a.y} Q ${mx} ${my} ${bx} ${by}`}
+                markerEnd={l.directed ? 'url(#mund-arrow)' : undefined}
+                onClick={(e) => {
+                  if (e.altKey) useBoard.getState().removeLink(l.id)
+                }}
+              >
                 <title>
-                  {l.why} — {l.addedBy}
+                  {l.why} — {l.addedBy} (alt-click to remove)
                 </title>
               </path>
             )
