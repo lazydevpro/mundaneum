@@ -5,6 +5,7 @@ import type { WebMcpStatus } from '../mcp/webmcp'
 import { applyArrangement } from '../engine/engine'
 import type { Arrangement, CardStyle } from '../types'
 import { Icon } from './icons'
+import { WebMcpPill } from './ToolsPanel'
 
 /** Everything that is not the board, kept to a whisper. */
 
@@ -49,14 +50,7 @@ export function StatusLine({ webmcp }: { webmcp: WebMcpStatus }) {
 
   return (
     <div className="chrome status-line">
-      <span
-        className={'live-dot' + (webmcp === 'live' ? ' on' : '')}
-        title={
-          webmcp === 'live'
-            ? 'WebMCP live — agents in this browser can see this board'
-            : 'WebMCP unavailable — enable chrome://flags/#enable-webmcp-testing or serve with an origin-trial token'
-        }
-      />
+      <WebMcpPill status={webmcp} />
       {engineText && <span>{engineText}</span>}
       {flash && activity && (
         <span>
