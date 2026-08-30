@@ -164,6 +164,40 @@ const PROVIDERS: Provider[] = [
   },
 ]
 
+/** Agent-registered providers (add_provider) — checked before the built-ins,
+ *  so a live session can teach the board new platforms (Pinterest, Twitch…). */
+export interface RuntimeProvider {
+  key: string
+  site: string
+  hostContains: string
+  pathIncludes?: string
+  type: CardType
+  embedTemplate?: string // {url} = encoded href, {href} = raw href, {path1} = first path segment
+  needsUnfurl?: boolean
+}
+
+let runtime: RuntimeProvider[] = []
+export function runtimeProviders(): RuntimeProvider[] {
+  return runtime.slice()
+}
+export function setRuntimeProviders(list: RuntimeProvider[]): void {
+  runtime = list.slice()
+}
+export function addRuntimeProvider(p: RuntimeProvider): void {
+  runtime = [p, ...runtime.filter((x) => x.key !== p.key)]
+}
+export function removeRuntimeProvider(key: string): void {
+  runtime = runtime.filter((x) => x.key !== key)
+}
+
+function fillTemplate(tpl: string, u: URL): string {
+  return tpl
+    .replace(/\{url\}/g, encodeURIComponent(u.href))
+    .replace(/\{href\}/g, u.href)
+    .replace(/\{path1\}/g, u.pathname.split('/').filter(Boolean)[0] ?? '')
+    .replace(/\{pathLast\}/g, u.pathname.split('/').filter(Boolean).pop() ?? '')
+}
+
 const VIDEO_FILE = /\.(mp4|webm|mov|m4v)(\?|$)/i
 const AUDIO_FILE = /\.(mp3|wav|ogg|m4a|flac)(\?|$)/i
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i
@@ -175,6 +209,20 @@ export function classifyUrl(raw: string): Classified {
     u = new URL(raw)
   } catch {
     return { type: 'link', meta: {}, needsUnfurl: false }
+  }
+
+  for (const rp of runtime) {
+    if (u.hostname.includes(rp.hostContains) && (!rp.pathIncludes || u.pathname.includes(rp.pathIncludes))) {
+      return {
+        type: rp.type,
+        meta: {
+          provider: rp.key,
+          site: rp.site,
+          ...(rp.embedTemplate ? { embedUrl: fillTemplate(rp.embedTemplate, u) } : {}),
+        },
+        needsUnfurl: rp.needsUnfurl ?? !rp.embedTemplate,
+      }
+    }
   }
 
   for (const p of PROVIDERS) {

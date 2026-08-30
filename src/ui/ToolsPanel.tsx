@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { allTools } from '../mcp/registry'
+import { useEffect, useReducer, useState } from 'react'
+import { allTools, onToolsChanged, removeTool } from '../mcp/registry'
+import { removeRuntimeProvider } from '../embed/providers'
+import { useBoard } from '../store'
 import type { WebMcpStatus } from '../mcp/webmcp'
 import { Icon } from './icons'
 
@@ -36,7 +38,19 @@ export function WebMcpPill({ status }: { status: WebMcpStatus }) {
 }
 
 function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void }) {
+  const [, bump] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => onToolsChanged(bump), [])
+  const agentProviders = useBoard((s) => s.agentProviders)
   const tools = allTools()
+  const removeAgentTool = (name: string) => {
+    removeTool(name)
+    useBoard.getState().removeAgentExtension('tool', name)
+  }
+  const removeProvider = (key: string) => {
+    removeRuntimeProvider(key)
+    useBoard.getState().removeAgentExtension('provider', key)
+    bump()
+  }
   return (
     <div
       className="modal-back"
@@ -59,9 +73,10 @@ function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void
         </div>
 
         <div className="tools-rule">
-          <b>The one rule:</b> agents may contribute anything except position. They add,
-          link, group, label, annotate, sketch, and arrange by intent — the page computes
-          every coordinate. No tool takes or returns one.
+          <b>Agents contribute meaning.</b> They add cards, images, and widgets; link,
+          group, and label; sketch and annotate; arrange the board; and even build new
+          tools and teach it new platforms. The page arranges by default, and every
+          action is signed by which agent made it.
         </div>
 
         <div className={'tools-status' + (status === 'live' ? ' on' : '')}>
@@ -83,9 +98,21 @@ function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void
         <div className="tools-grid">
           {tools.map((t) => {
             const dormant = t.applicable && !t.applicable()
+            const agentMade = t.source === 'agent'
             return (
-              <div key={t.name} className={'tool-card' + (dormant ? ' dormant' : '')}>
-                <span className="tool-name">{t.name}</span>
+              <div key={t.name} className={'tool-card' + (dormant ? ' dormant' : '') + (agentMade ? ' agent-made' : '')}>
+                <span className="tool-name">
+                  {t.name}
+                  {agentMade && (
+                    <button
+                      className="tool-remove"
+                      title="remove this agent-built tool"
+                      onClick={() => removeAgentTool(t.name)}
+                    >
+                      <Icon name="x" size={10} />
+                    </button>
+                  )}
+                </span>
                 <span className="tool-desc">
                   {dormant
                     ? 'Appears when the page has verified near-duplicates.'
@@ -95,11 +122,26 @@ function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void
                   {t.annotations?.readOnlyHint && <em>read-only</em>}
                   {t.annotations?.destructiveHint && <em>destructive</em>}
                   {t.applicable && <em>dynamic</em>}
+                  {agentMade && <em className="by-agent">built by {t.by}</em>}
                 </span>
               </div>
             )
           })}
         </div>
+
+        {agentProviders.length > 0 && (
+          <div className="tools-providers">
+            <span className="head-line">Platforms agents taught this board</span>
+            {agentProviders.map((p) => (
+              <span key={p.key} className="provider-chip">
+                {p.site}
+                <button title="remove" onClick={() => removeProvider(p.key)}>
+                  <Icon name="x" size={9} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="tools-try">
           <span className="head-line">Try asking</span>

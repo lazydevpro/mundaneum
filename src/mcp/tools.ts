@@ -1,12 +1,12 @@
-import type { Card, CardType } from '../types'
+import type { AgentToolDef, Card, CardType } from '../types'
 import { liveCards, useBoard } from '../store'
 import { applyArrangement, clusterTerms, duplicatePairs, latestGraph, organize, scheduleOrganize } from '../engine/engine'
 import { spatial } from '../engine/spatial'
-import { classifyUrl } from '../embed/providers'
+import { addRuntimeProvider, classifyUrl, type RuntimeProvider } from '../embed/providers'
 import { compressImage } from '../capture/ingest'
 import { serviceBase } from '../agents/config'
 import { enrichCard } from '../embed/unfurl'
-import { defineTool } from './registry'
+import { callTool, defineTool, getTool } from './registry'
 
 /** Common `agent` property — every contribution is signed by WHICH agent. */
 const agentProp = {
@@ -130,6 +130,53 @@ function renderSketch(strokes: Array<Record<string, unknown>>): string | null {
     drew = true
   }
   return drew ? canvas.toDataURL('image/png') : null
+}
+
+/**
+ * Self-extension: agent-authored tools are COMPOSITIONS of the existing
+ * vetted tools (a named macro), not arbitrary code. Every step runs through
+ * the same callTool path with the same validation, so a runtime tool can
+ * never do more than the built-ins can — it just bundles them. Placeholders
+ * {input.field} in string args are filled from the caller's input.
+ */
+function fillArgs(args: Record<string, unknown>, input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(args)) {
+    if (typeof v === 'string') {
+      out[k] = v.replace(/\{input\.([\w]+)\}/g, (_, f) => String(input[f] ?? ''))
+    } else out[k] = v
+  }
+  return out
+}
+
+export function registerAgentTool(def: AgentToolDef): { ok: boolean; error?: string } {
+  const steps = (def.steps ?? []).filter((s) => getTool(s.tool) && getTool(s.tool)!.source !== 'agent')
+  if (!steps.length) return { ok: false, error: 'no steps referencing existing built-in tools' }
+  defineTool({
+    name: def.name,
+    title: def.title ?? def.name,
+    description: def.description,
+    inputSchema: def.inputSchema ?? { type: 'object' },
+    source: 'agent',
+    by: def.by,
+    annotations: { untrustedContentHint: true },
+    execute: async (input, { agent }) => {
+      const results: unknown[] = []
+      for (const step of steps) {
+        const merged = { ...fillArgs(step.args ?? {}, input), agent }
+        results.push(JSON.parse(await callTool(step.tool, merged, agent)))
+      }
+      return JSON.stringify({ ran: def.name, steps: results })
+    },
+  })
+  return { ok: true }
+}
+
+/** Re-apply a board's stored agent providers + tools after load. */
+export function reapplyExtensions(): void {
+  const s = useBoard.getState()
+  for (const p of s.agentProviders) addRuntimeProvider(p)
+  for (const t of s.agentTools) registerAgentTool(t)
 }
 
 export function registerBoardTools(): void {
@@ -674,6 +721,111 @@ export function registerBoardTools(): void {
       s.logActivity(agent, 'drew a sketch' + (input.title ? ': "' + String(input.title).slice(0, 40) + '"' : ''))
       scheduleOrganize()
       return JSON.stringify({ ok: true, card: card.id, note: 'Provisional until the human accepts it. The page placed it.' })
+    },
+  })
+
+  // ------------------------------------------------------------- add_provider
+  defineTool({
+    name: 'add_provider',
+    title: 'Teach the board a new platform',
+    description:
+      'Add support for a new link platform at runtime — e.g. Pinterest, Twitch, CodePen. Give a hostname to match and, for embeddable platforms, an embed URL template using {url} (the encoded link), {href} (the raw link), or {path1} (first path segment). Existing links on the board that match are upgraded immediately, and new ones are recognized from now on. This extends the site without a deploy.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Short id for this provider, e.g. "pinterest".' },
+        site: { type: 'string', description: 'Display name, e.g. "Pinterest".' },
+        host_contains: { type: 'string', description: 'Substring the URL hostname must contain, e.g. "pinterest.".' },
+        path_includes: { type: 'string', description: 'Optional: substring the path must contain, e.g. "/pin/".' },
+        type: { type: 'string', enum: ['video', 'audio', 'social', 'link', 'image'], description: 'What kind of card these become.' },
+        embed_template: { type: 'string', description: 'Optional iframe URL template with {url}, {href}, {path1} (first path segment), or {pathLast} (last segment, often the id). Omit to render a rich link preview instead.' },
+        ...agentProp,
+      },
+      required: ['key', 'site', 'host_contains', 'type'],
+    },
+    execute: (input, { agent }) => {
+      const provider: RuntimeProvider = {
+        key: String(input.key).slice(0, 40).replace(/[^a-z0-9_-]/gi, ''),
+        site: String(input.site).slice(0, 40),
+        hostContains: String(input.host_contains).slice(0, 80),
+        pathIncludes: input.path_includes ? String(input.path_includes).slice(0, 80) : undefined,
+        type: (['video', 'audio', 'social', 'link', 'image'].includes(String(input.type)) ? input.type : 'link') as CardType,
+        embedTemplate: input.embed_template ? String(input.embed_template).slice(0, 400) : undefined,
+      }
+      if (!provider.key || !provider.hostContains) return JSON.stringify({ error: 'key and host_contains are required' })
+      addRuntimeProvider(provider)
+      useBoard.getState().saveAgentProvider(provider)
+
+      // Upgrade existing matching cards so the new support is visible at once.
+      const s = useBoard.getState()
+      let upgraded = 0
+      for (const c of liveCards(s.cards)) {
+        if (!/^https?:\/\//.test(c.content)) continue
+        try {
+          if (new URL(c.content).hostname.includes(provider.hostContains)) {
+            const cls = classifyUrl(c.content)
+            if (cls.meta.provider === provider.key) {
+              s.updateCard(c.id, { type: cls.type, meta: { ...c.meta, ...cls.meta } })
+              upgraded++
+            }
+          }
+        } catch { /* skip */ }
+      }
+      s.logActivity(agent, 'added ' + provider.site + ' support' + (upgraded ? ' (' + upgraded + ' upgraded)' : ''))
+      return JSON.stringify({ ok: true, provider: provider.key, upgraded_existing: upgraded })
+    },
+  })
+
+  // ------------------------------------------------------------- register_tool
+  defineTool({
+    name: 'register_tool',
+    title: 'Build a new tool',
+    description:
+      'Compose a new named tool from existing tools, so you (and other agents) can reuse a multi-step action as one call. Give it a name, description, and steps — each step names an existing tool and its arguments; string arguments may reference this tool\'s input as {input.field}. The new tool joins the board\'s tool surface immediately. This lets the board grow its own capabilities in a session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'kebab or snake name, e.g. "capture_and_link".' },
+        description: { type: 'string' },
+        input_schema: { type: 'object', description: 'Optional JSON Schema for this tool\'s own inputs.' },
+        steps: {
+          type: 'array',
+          maxItems: 12,
+          items: {
+            type: 'object',
+            properties: {
+              tool: { type: 'string', description: 'An existing tool name to call.' },
+              args: { type: 'object', description: 'Arguments; string values may use {input.field}.' },
+            },
+            required: ['tool', 'args'],
+          },
+        },
+        ...agentProp,
+      },
+      required: ['name', 'description', 'steps'],
+    },
+    execute: (input, { agent }) => {
+      const name = String(input.name ?? '').slice(0, 60).replace(/[^a-z0-9_-]/gi, '')
+      if (!name) return JSON.stringify({ error: 'a valid name is required' })
+      if (getTool(name) && getTool(name)!.source !== 'agent') {
+        return JSON.stringify({ error: 'cannot shadow the built-in tool "' + name + '"' })
+      }
+      const def: AgentToolDef = {
+        name,
+        title: name,
+        description: String(input.description ?? '').slice(0, 400),
+        inputSchema: (input.input_schema as Record<string, unknown>) ?? { type: 'object' },
+        steps: ((input.steps as Array<Record<string, unknown>>) ?? []).slice(0, 12).map((s) => ({
+          tool: String(s.tool),
+          args: (s.args as Record<string, unknown>) ?? {},
+        })),
+        by: agent,
+      }
+      const res = registerAgentTool(def)
+      if (!res.ok) return JSON.stringify({ error: res.error })
+      useBoard.getState().saveAgentTool(def)
+      useBoard.getState().logActivity(agent, 'built a new tool: ' + name)
+      return JSON.stringify({ ok: true, tool: name, note: 'Now on the board\'s tool surface for every agent.' })
     },
   })
 

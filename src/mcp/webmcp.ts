@@ -1,6 +1,6 @@
 import { useBoard } from '../store'
 import { engineEvents } from '../engine/engine'
-import { allTools, callTool, type ToolDef } from './registry'
+import { allTools, callTool, onToolsChanged, type ToolDef } from './registry'
 
 /**
  * Bridge the internal registry onto the browser's WebMCP surface
@@ -110,8 +110,10 @@ export function startWebMcp(): WebMcpStatus {
     return 'unavailable'
   }
   sync(mc)
-  // Re-evaluate dynamic tools when structure changes or the board mutates.
+  // Re-evaluate when structure changes, the board mutates, or an agent
+  // registers a new tool at runtime (register_tool → toolchange).
   engineEvents.addEventListener('organized', () => sync(mc))
+  onToolsChanged(() => sync(mc))
   let last = useBoard.getState().cards
   useBoard.subscribe((s) => {
     if (s.cards !== last) {

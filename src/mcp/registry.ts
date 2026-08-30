@@ -22,13 +22,36 @@ export interface ToolDef {
   annotations?: ToolAnnotations
   /** Register only while this returns true (re-evaluated on board changes). */
   applicable?: () => boolean
+  /** 'agent' tools are authored at runtime via register_tool. */
+  source?: 'builtin' | 'agent'
+  by?: string
   execute: (input: Record<string, unknown>, meta: { agent: string }) => string | Promise<string>
+}
+
+const listeners = new Set<() => void>()
+export function onToolsChanged(cb: () => void): () => void {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+function notify(): void {
+  for (const cb of listeners) cb()
 }
 
 const tools = new Map<string, ToolDef>()
 
 export function defineTool(def: ToolDef): void {
-  tools.set(def.name, def)
+  tools.set(def.name, { source: 'builtin', ...def })
+  notify()
+}
+
+export function removeTool(name: string): boolean {
+  const ok = tools.delete(name)
+  if (ok) notify()
+  return ok
+}
+
+export function agentTools(): ToolDef[] {
+  return allTools().filter((t) => t.source === 'agent')
 }
 
 export function allTools(): ToolDef[] {

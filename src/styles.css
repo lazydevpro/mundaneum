@@ -1109,3 +1109,45 @@ textarea {
   color: var(--faint);
   margin-bottom: 2px;
 }
+
+/* ---------- agent-authored tools + providers in the panel ---------- */
+
+.tool-card.agent-made { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.tool-name { display: flex; align-items: center; gap: 6px; }
+.tool-remove {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--faint); margin-left: auto;
+}
+.tool-remove:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tool-badges .by-agent { color: var(--accent); }
+
+.tools-providers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.tools-providers .head-line {
+  width: 100%;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 3px 5px 3px 10px;
+}
+.provider-chip button {
+  width: 15px; height: 15px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--faint);
+}
+.provider-chip button:hover { color: var(--accent); }

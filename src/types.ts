@@ -91,6 +91,20 @@ export interface Annotation {
   by: string
 }
 
+/** A runtime tool an agent composed from existing vetted tools (register_tool). */
+export interface AgentToolStep {
+  tool: string
+  args: Record<string, unknown> // string values may contain {input.field} placeholders
+}
+export interface AgentToolDef {
+  name: string
+  title?: string
+  description: string
+  inputSchema: Record<string, unknown>
+  steps: AgentToolStep[]
+  by: string
+}
+
 export type CardStyle = 'pure' | 'cards'
 export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column' | 'tree'
 

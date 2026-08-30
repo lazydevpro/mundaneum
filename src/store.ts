@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type {
-  Annotation, Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment,
-  Link, ProvenanceFilter, Stroke, ViewPrefs, XY,
+  AgentToolDef, Annotation, Card, CardMeta, CardType, Cluster, EngineStatus,
+  LabelAssignment, Link, ProvenanceFilter, Stroke, ViewPrefs, XY,
 } from './types'
+import type { RuntimeProvider } from './embed/providers'
 import { deleteAsset } from './capture/assets'
 import { currentBoardId, newId } from './boardId'
 
@@ -25,6 +26,8 @@ interface BoardState {
   labels: LabelAssignment[]
   strokes: Stroke[]
   annotations: Annotation[]
+  agentProviders: RuntimeProvider[]
+  agentTools: AgentToolDef[]
   prefs: ViewPrefs
   filters: ProvenanceFilter
   selection: string[]
@@ -73,6 +76,9 @@ interface BoardState {
   addAnnotation(a: Omit<Annotation, 'id'>): void
   removeAnnotations(ids: string[]): void
   addGroup(name: string, cardIds: string[], by: string): void
+  saveAgentProvider(p: RuntimeProvider): void
+  saveAgentTool(def: AgentToolDef): void
+  removeAgentExtension(kind: 'provider' | 'tool', id: string): void
   setPrefs(p: Partial<ViewPrefs>): void
 }
 
@@ -84,6 +90,8 @@ export interface Persisted {
   labels: LabelAssignment[]
   strokes?: Stroke[]
   annotations?: Annotation[]
+  agentProviders?: RuntimeProvider[]
+  agentTools?: AgentToolDef[]
   prefs?: ViewPrefs
 }
 
@@ -107,6 +115,8 @@ export const useBoard = create<BoardState>((set, get) => ({
   labels: [],
   strokes: [],
   annotations: [],
+  agentProviders: [],
+  agentTools: [],
   prefs: { ...DEFAULT_PREFS },
   filters: { mode: 'all', hiddenAgents: [] },
   selection: [],
@@ -315,6 +325,8 @@ export const useBoard = create<BoardState>((set, get) => ({
       labels: data.labels,
       strokes: data.strokes ?? [],
       annotations: data.annotations ?? [],
+      agentProviders: data.agentProviders ?? [],
+      agentTools: data.agentTools ?? [],
       prefs: { ...DEFAULT_PREFS, ...data.prefs },
       clusters: [],
       selection: [],
@@ -356,6 +368,22 @@ export const useBoard = create<BoardState>((set, get) => ({
     set({ labels })
   },
 
+  saveAgentProvider(p) {
+    set({ agentProviders: [p, ...get().agentProviders.filter((x) => x.key !== p.key)] })
+  },
+
+  saveAgentTool(def) {
+    set({ agentTools: [def, ...get().agentTools.filter((x) => x.name !== def.name)] })
+  },
+
+  removeAgentExtension(kind, id) {
+    if (kind === 'provider') {
+      set({ agentProviders: get().agentProviders.filter((p) => p.key !== id) })
+    } else {
+      set({ agentTools: get().agentTools.filter((t) => t.name !== id) })
+    }
+  },
+
   setPrefs(p) {
     set({ prefs: { ...get().prefs, ...p } })
   },
@@ -385,6 +413,8 @@ useBoard.subscribe((s) => {
       labels: s.labels,
       strokes: s.strokes,
       annotations: s.annotations,
+      agentProviders: s.agentProviders,
+      agentTools: s.agentTools,
       prefs: s.prefs,
     }
     void idbSet(key(s.boardId), data)

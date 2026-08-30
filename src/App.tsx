@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { hashFlag } from './boardId'
 import { loadBoard, useBoard } from './store'
 import { warmEngine } from './engine/engine'
-import { registerBoardTools } from './mcp/tools'
+import { reapplyExtensions, registerBoardTools } from './mcp/tools'
 import { startWebMcp, type WebMcpStatus } from './mcp/webmcp'
 import { installPasteHandler } from './capture/ingest'
 import { Canvas } from './ui/Canvas'
@@ -37,6 +37,9 @@ export default function App() {
   useEffect(() => {
     registerBoardTools()
     void loadBoard().then(() => {
+      // Re-apply this board's agent-authored providers + tools before the
+      // WebMCP surface is published, so they appear on it too.
+      reapplyExtensions()
       // Tools registered in the top-level page, after state exists.
       setWebmcp(startWebMcp())
       maybeLoadRelay()
