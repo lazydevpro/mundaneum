@@ -79,7 +79,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
           <span className="badge"><Icon name="note" size={14} /></span>
           <span className="face-text">
             <span className="title">{card.title ?? meta.title ?? card.content}</span>
-            <span className="host">{meta.site ?? (isUrl ? hostOf(card.content) : 'audio')}</span>
+            <SourceLink card={card} fallback={isUrl ? undefined : 'audio'} />
           </span>
           <span className="play-mini"><Icon name="play" size={10} /></span>
         </button>
@@ -90,7 +90,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
           {meta.image && <img className="face-img" src={meta.image} alt="" draggable={false} referrerPolicy="no-referrer" />}
           {meta.description && <span className="quote">{meta.description}</span>}
           <span className="face-foot">
-            <span className="host">{meta.site ?? hostOf(card.content)}</span>
+            <SourceLink card={card} />
             {meta.embedUrl && <span className="play-mini"><Icon name="play" size={10} /></span>}
           </span>
         </button>
@@ -187,9 +187,35 @@ function VideoFace({ card, onActivate }: { card: Card; onActivate: () => void })
       </span>
       <span className="face-foot">
         <span className="title">{card.title ?? meta.title ?? 'video'}</span>
-        <span className="host">{meta.site ?? (meta.filename ? 'file' : hostOf(card.content))}</span>
+        <SourceLink card={card} fallback={meta.filename ? 'file' : undefined} />
       </span>
     </button>
+  )
+}
+
+/**
+ * The host label, as a real link when there's a URL behind it. Embedding can
+ * always fail for reasons outside this app (owner-disabled embeds, age gates,
+ * a signed-out browser), so every media card keeps a one-click way to watch
+ * it at the source.
+ */
+function SourceLink({ card, fallback }: { card: Card; fallback?: string }) {
+  const meta = card.meta ?? {}
+  const isUrl = /^https?:\/\//.test(card.content)
+  const label = meta.site ?? fallback ?? (isUrl ? hostOf(card.content) : card.type)
+  if (!isUrl) return <span className="host">{label}</span>
+  return (
+    <a
+      className="host"
+      href={card.content}
+      target="_blank"
+      rel="noreferrer noopener"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      title={'open on ' + label}
+    >
+      {label} ↗
+    </a>
   )
 }
 
@@ -246,10 +272,25 @@ function ArticleFace({ card, onActivate }: { card: Card; onActivate: () => void 
 
 function LiveEmbed({ card, onClose }: { card: Card; onClose: () => void }) {
   const h = liveHeight(card)
+  // Some videos disallow embedding outright (age-restricted, owner-disabled),
+  // so a live player always offers a way out to the source.
+  const sourceUrl = /^https?:\/\//.test(card.content) ? card.content : null
   return (
     <div className="live-embed">
       <div className="live-strip">
         <span className="title">{card.title ?? card.meta?.title ?? card.meta?.filename ?? ''}</span>
+        {sourceUrl && (
+          <a
+            className="live-open"
+            href={sourceUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            onPointerDown={(e) => e.stopPropagation()}
+            title={'open on ' + (card.meta?.site ?? 'the source site')}
+          >
+            open ↗
+          </a>
+        )}
         <button
           className="live-close"
           onPointerDown={(e) => e.stopPropagation()}
@@ -297,11 +338,20 @@ function LiveInner({ card }: { card: Card }) {
   // Fixed-size provider widgets must never show scrollbars; live article
   // pages are real pages and keep theirs.
   const isWidget = card.type === 'video' || card.type === 'audio' || card.type === 'social'
+  /**
+   * A player from a known provider (built-in or one an agent taught us via
+   * add_provider) embeds unsandboxed — exactly as every site on the web
+   * embeds YouTube/Spotify. Sandboxing strips their session and YouTube
+   * answers with a bot check instead of the video. Arbitrary page URLs
+   * ("embed live" on an article) stay sandboxed, and agent-authored widget
+   * code above keeps the hardest jail of all.
+   */
+  const trustedProvider = Boolean(meta.provider) && meta.provider !== 'article' && Boolean(meta.embedUrl)
   return (
     <iframe
       src={src}
       title={card.title ?? src}
-      sandbox={IFRAME_SANDBOX}
+      {...(trustedProvider ? {} : { sandbox: IFRAME_SANDBOX })}
       allow={IFRAME_ALLOW}
       referrerPolicy="strict-origin-when-cross-origin"
       loading="lazy"

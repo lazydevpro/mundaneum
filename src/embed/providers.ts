@@ -42,7 +42,9 @@ const PROVIDERS: Provider[] = [
         type: 'video',
         meta: {
           image: 'https://img.youtube.com/vi/' + id + '/hqdefault.jpg',
-          embedUrl: 'https://www.youtube-nocookie.com/embed/' + id,
+          // Real youtube.com, not -nocookie: the nocookie domain has no
+          // session, so YouTube blocks playback with a bot check.
+          embedUrl: 'https://www.youtube.com/embed/' + id,
         },
         needsUnfurl: true, // title via noembed
       }

@@ -43,18 +43,20 @@ export default function App() {
       // Tools registered in the top-level page, after state exists.
       setWebmcp(startWebMcp())
       maybeLoadRelay()
-      // Migration: URL cards from before the provider registry (or added by
-      // agents/tools without classification) get faces + enrichment now.
+      // Migration: URL cards get re-classified against the CURRENT provider
+      // table on every load. Provider definitions change (a better embed URL,
+      // a platform an agent taught this board), and a stored embedUrl would
+      // otherwise rot — cards keep their unfurled title/image/description.
       {
         const s = useBoard.getState()
         for (const c of Object.values(s.cards)) {
-          if (!/^https?:\/\//.test(c.content) || c.meta?.unfurled) continue
+          if (!/^https?:\/\//.test(c.content)) continue
           const cls = classifyUrl(c.content)
           s.updateCard(c.id, {
-            type: cls.type,
-            meta: { ...cls.meta, ...c.meta },
+            type: c.meta?.unfurled ? c.type : cls.type,
+            meta: { ...c.meta, ...cls.meta },
           })
-          enrichCard(c.id)
+          if (!c.meta?.unfurled) enrichCard(c.id)
         }
       }
       // Structure is derived state: boards that were organized before get

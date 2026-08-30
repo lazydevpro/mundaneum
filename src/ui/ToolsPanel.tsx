@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
 import { allTools, onToolsChanged, removeTool } from '../mcp/registry'
 import { removeRuntimeProvider } from '../embed/providers'
+import { FILE_SUPPORT, PLATFORM_SUPPORT, type CapabilityGroup } from '../embed/capabilities'
 import { useBoard } from '../store'
 import type { WebMcpStatus } from '../mcp/webmcp'
 import { Icon } from './icons'
@@ -17,6 +18,25 @@ const TRY_ASKING = [
   '"Sketch a floor-plan idea and put it near the space notes."',
   '"What does the permits cluster say?"',
 ]
+
+function CapabilitySection({ head, groups }: { head: string; groups: CapabilityGroup[] }) {
+  return (
+    <div className="tools-caps">
+      <span className="head-line">{head}</span>
+      {groups.map((g) => (
+        <div key={g.label} className="cap-row">
+          <span className="cap-label">{g.label}</span>
+          <span className="cap-items">
+            {g.items.map((i) => (
+              <em key={i}>{i}</em>
+            ))}
+            {g.note && <span className="cap-note">{g.note}</span>}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function firstSentence(text: string, max = 110): string {
   const dot = text.indexOf('. ')
@@ -128,6 +148,12 @@ function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void
             )
           })}
         </div>
+
+        <CapabilitySection
+          head="What you can drop, paste, or link"
+          groups={FILE_SUPPORT}
+        />
+        <CapabilitySection head="Links that become live embeds" groups={PLATFORM_SUPPORT} />
 
         {agentProviders.length > 0 && (
           <div className="tools-providers">
