@@ -74,6 +74,7 @@ textarea {
 .board {
   position: fixed;
   inset: 0;
+  -webkit-touch-callout: none;
   background-image: radial-gradient(var(--dot) 1px, transparent 1px);
   background-size: 26px 26px;
   cursor: default;
@@ -203,7 +204,7 @@ textarea {
   display: none;
   gap: 4px;
 }
-.card.provisional:hover .review { display: flex; }
+.card.provisional:hover .review, .card.provisional.selected .review { display: flex; }
 .review button {
   width: 22px;
   height: 22px;
@@ -695,7 +696,7 @@ textarea {
 }
 .face-foot a.host:hover { color: var(--accent); }
 .face-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
-.card:hover .face-actions { opacity: 1; }
+.card:hover .face-actions, .card.selected .face-actions { opacity: 1; }
 .face-actions button {
   width: 22px;
   height: 22px;

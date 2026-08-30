@@ -68,6 +68,7 @@ interface BoardState {
   removeLink(id: string): void
   addStroke(s: Omit<Stroke, 'id'>): void
   undoStroke(): void
+  removeStrokes(ids: string[]): void
   setPrefs(p: Partial<ViewPrefs>): void
 }
 
@@ -325,6 +326,11 @@ export const useBoard = create<BoardState>((set, get) => ({
 
   undoStroke() {
     set({ strokes: get().strokes.slice(0, -1) })
+  },
+
+  removeStrokes(ids) {
+    const gone = new Set(ids)
+    set({ strokes: get().strokes.filter((st) => !gone.has(st.id)) })
   },
 
   setPrefs(p) {

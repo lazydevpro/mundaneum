@@ -46,13 +46,34 @@ export function Canvas() {
   const [currentInk, setCurrentInk] = useState<{ kind: PenTool; points: XY[] } | null>(null)
 
   const gesture = useRef<{
-    mode: 'pan' | 'card' | 'lasso' | 'ink' | null
+    mode: 'pan' | 'card' | 'lasso' | 'ink' | 'pinch' | null
     id?: string
     start: XY
     startView?: View
     cardStart?: XY
     moved: boolean
   }>({ mode: null, start: { x: 0, y: 0 }, moved: false })
+
+  // Live pointers (touch): two fingers anywhere = pinch zoom + pan.
+  const pointers = useRef(new Map<number, XY>())
+  const pinch0 = useRef<{ dist: number; mid: XY; view: View } | null>(null)
+
+  const beginPinchIfTwo = () => {
+    if (pointers.current.size !== 2) return false
+    const [a, b] = [...pointers.current.values()]
+    pinch0.current = {
+      dist: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      view: { ...viewRef.current },
+    }
+    // A second finger cancels whatever was in flight (uncommitted ink included).
+    gesture.current = { mode: 'pinch', start: { x: 0, y: 0 }, moved: true }
+    setCurrentInk(null)
+    setLasso(null)
+    setPanning(false)
+    setDraggingCard(null)
+    return true
+  }
 
   const toWorld = useCallback((sx: number, sy: number): XY => {
     const v = viewRef.current
@@ -148,8 +169,16 @@ export function Canvas() {
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
+  const capture = (e: React.PointerEvent) => {
+    try {
+      boardRef.current?.setPointerCapture(e.pointerId)
+    } catch {
+      /* some pointers (synthetic, or mid-gesture on iOS) refuse capture */
+    }
+  }
+
   const startInk = (e: React.PointerEvent) => {
-    ;(boardRef.current as HTMLElement).setPointerCapture(e.pointerId)
+    capture(e)
     const p = toWorld(e.clientX, e.clientY)
     gesture.current = { mode: 'ink', start: p, moved: false }
     setCurrentInk({ kind: useInk.getState().tool, points: [p] })
@@ -160,12 +189,15 @@ export function Canvas() {
     if (e.button !== 0) return
     const target = e.target as HTMLElement
     if (target.closest('.note-editor')) return
-    if (pen) {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (beginPinchIfTwo()) return
+    // Apple Pencil draws even outside pen mode; fingers navigate.
+    if (pen || e.pointerType === 'pen') {
       startInk(e)
       return
     }
     if (target.closest('[data-card]')) return
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    capture(e)
     if (e.shiftKey) {
       const p = toWorld(e.clientX, e.clientY)
       gesture.current = { mode: 'lasso', start: p, moved: false }
@@ -183,9 +215,13 @@ export function Canvas() {
 
   const onCardDown = (e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return
-    if (pen) return // ink flows over cards; the board handler catches it
+    if (pen || e.pointerType === 'pen') return // ink flows over cards; the board handler catches it
+    if (pointers.current.size >= 1) {
+      // second finger landing on a card: let it reach the board for pinch
+      return
+    }
     e.stopPropagation()
-    boardRef.current?.setPointerCapture(e.pointerId)
+    capture(e)
     const p = useBoard.getState().positions[id] ?? { x: 0, y: 0 }
     gesture.current = {
       mode: 'card',
@@ -197,8 +233,26 @@ export function Canvas() {
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    }
     const g = gesture.current
     if (!g.mode) return
+
+    if (g.mode === 'pinch') {
+      const p0 = pinch0.current
+      if (!p0 || pointers.current.size < 2) return
+      const [a, b] = [...pointers.current.values()]
+      const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      const k = Math.min(2.5, Math.max(0.12, p0.view.k * (dist / p0.dist)))
+      // keep the world point that started under the fingers under them still
+      const wx = (p0.mid.x - p0.view.x) / p0.view.k
+      const wy = (p0.mid.y - p0.view.y) / p0.view.k
+      setView({ k, x: mid.x - wx * k, y: mid.y - wy * k })
+      return
+    }
+
     const dx = e.clientX - g.start.x
     const dy = e.clientY - g.start.y
     if (Math.abs(dx) + Math.abs(dy) > 4) g.moved = true
@@ -214,6 +268,10 @@ export function Canvas() {
       setLasso((prev) => (prev ? [...prev, p] : [p]))
     } else if (g.mode === 'ink') {
       const p = toWorld(e.clientX, e.clientY)
+      if (currentInk?.kind === 'erase') {
+        eraseAt(p)
+        return
+      }
       setCurrentInk((cur) =>
         cur
           ? {
@@ -236,10 +294,53 @@ export function Canvas() {
     return null
   }
 
-  const onUp = () => {
+  /** Eraser: removes ink strokes and links the pointer crosses. */
+  const eraseAt = (p: XY) => {
+    const st = useBoard.getState()
+    const r = 14 / viewRef.current.k
+    const deadStrokes = st.strokes
+      .filter((stroke) => {
+        const pts =
+          stroke.kind === 'rect' || stroke.kind === 'ellipse'
+            ? rectOutline(stroke.points[0], stroke.points[stroke.points.length - 1])
+            : stroke.points
+        for (let i = 0; i < pts.length - 1; i++) {
+          if (distToSeg(p, pts[i], pts[i + 1]) < r) return true
+        }
+        return false
+      })
+      .map((x) => x.id)
+    if (deadStrokes.length) st.removeStrokes(deadStrokes)
+
+    for (const l of Object.values(st.links)) {
+      const a = st.positions[l.from]
+      const b = st.positions[l.to]
+      if (!a || !b) continue
+      const mx = (a.x + b.x) / 2
+      const my = (a.y + b.y) / 2 - Math.min(60, Math.hypot(b.x - a.x, b.y - a.y) * 0.12)
+      for (let t = 0; t < 1; t += 1 / 14) {
+        const q1 = quadPoint(a, { x: mx, y: my }, b, t)
+        const q2 = quadPoint(a, { x: mx, y: my }, b, Math.min(1, t + 1 / 14))
+        if (distToSeg(p, q1, q2) < r) {
+          st.removeLink(l.id)
+          break
+        }
+      }
+    }
+  }
+
+  const onUp = (e?: React.PointerEvent) => {
+    if (e) pointers.current.delete(e.pointerId)
     const g = gesture.current
+    if (g.mode === 'pinch') {
+      if (pointers.current.size < 2) {
+        pinch0.current = null
+        gesture.current = { mode: null, start: { x: 0, y: 0 }, moved: false }
+      }
+      return
+    }
     if (g.mode === 'ink') {
-      if (currentInk && currentInk.points.length > 1 && g.moved) {
+      if (currentInk && currentInk.kind !== 'erase' && currentInk.points.length > 1 && g.moved) {
         let inked = true
         if (currentInk.kind === 'arrow') {
           // Arrow landing on two cards is a relation, not ink — the same
@@ -446,6 +547,26 @@ export function Canvas() {
       </div>
     </div>
   )
+}
+
+function distToSeg(p: XY, a: XY, b: XY): number {
+  const abx = b.x - a.x
+  const aby = b.y - a.y
+  const len2 = abx * abx + aby * aby || 1
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2))
+  return Math.hypot(p.x - (a.x + t * abx), p.y - (a.y + t * aby))
+}
+
+function quadPoint(a: XY, m: XY, b: XY, t: number): XY {
+  const u = 1 - t
+  return {
+    x: u * u * a.x + 2 * u * t * m.x + t * t * b.x,
+    y: u * u * a.y + 2 * u * t * m.y + t * t * b.y,
+  }
+}
+
+function rectOutline(a: XY, b: XY): XY[] {
+  return [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }, a]
 }
 
 function NoteEditor({

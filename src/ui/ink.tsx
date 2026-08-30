@@ -10,7 +10,7 @@ import { Icon, type IconName } from './icons'
  * With prefs.toolbar = 'pinned', the rail stays on screen (whiteboard feel).
  */
 
-export type PenTool = 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow'
+export type PenTool = 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow' | 'erase'
 
 interface InkUi {
   pen: boolean
@@ -76,13 +76,15 @@ export function strokePath(s: Pick<Stroke, 'kind' | 'points'>) {
 
 export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] } | null }) {
   const strokes = useBoard((s) => s.strokes)
-  if (!strokes.length && !current) return null
+  // the eraser leaves no trail of its own
+  const live = current && current.kind !== 'erase' ? (current as Pick<Stroke, 'kind' | 'points'>) : null
+  if (!strokes.length && !live) return null
   return (
     <svg className="ink" width="1" height="1">
       {strokes.map((s) => (
         <g key={s.id}>{strokePath(s)}</g>
       ))}
-      {current && <g className="live">{strokePath(current)}</g>}
+      {live && <g className="live">{strokePath(live)}</g>}
     </svg>
   )
 }
@@ -99,6 +101,7 @@ export function PenBar() {
     ['rect', 'box', 'box'],
     ['ellipse', 'oval', 'oval'],
     ['arrow', 'arrow', 'arrow — card to card makes a link'],
+    ['erase', 'erase', 'eraser — removes ink and links'],
   ]
   return (
     <div className="chrome pen-bar">

@@ -25,6 +25,7 @@ export type IconName =
   | 'file'
   | 'boxcheck'
   | 'boxempty'
+  | 'erase'
 
 const STROKED: Record<string, React.ReactNode> = {
   move: (
@@ -52,6 +53,12 @@ const STROKED: Record<string, React.ReactNode> = {
   lines: <path d="M3 5h10M3 8h10M3 11h10" />,
   file: <path d="M4.2 1.8h4.6L12.8 6v8.2H4.2ZM8.8 1.8V6h4" />,
   boxempty: <rect x="2.8" y="2.8" width="10.4" height="10.4" rx="2" />,
+  erase: (
+    <>
+      <path d="M5.6 13 2.4 9.8a1.4 1.4 0 0 1 0-2L7.6 2.6a1.4 1.4 0 0 1 2 0l3.8 3.8a1.4 1.4 0 0 1 0 2L8.8 13Z" />
+      <path d="M5.6 13h7.6M5 6.4l4.6 4.6" />
+    </>
+  ),
   boxcheck: (
     <>
       <rect x="2.8" y="2.8" width="10.4" height="10.4" rx="2" />
