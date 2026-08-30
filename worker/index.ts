@@ -18,6 +18,10 @@
  * Optional var ALLOWED_ORIGIN locks CORS to the deployed app origin.
  */
 
+// The merge rule is shared with the client rather than reimplemented here,
+// so the two can't drift apart (the module is types + pure functions only).
+import { mergeDocs, type SyncDoc } from '../src/sync/doc'
+
 export interface Env {
   ANTHROPIC_API_KEY?: string
   GEMINI_API_KEY?: string
@@ -42,11 +46,33 @@ interface DurableObjectState {
 
 const DROP_TTL_MS = 10 * 60 * 1000
 
-/** One board's ephemeral photo slot. Strongly consistent, unlike an isolate Map. */
+/**
+ * Cost is bounded by construction, not by trust:
+ *  - a board's shared document is capped, so no board can grow without limit
+ *  - writes are rate limited per room
+ *  - a room untouched for IDLE_DAYS deletes itself on next contact
+ *  - binary assets (video, 3D, documents) never reach the server at all —
+ *    only the document and its small compressed images travel
+ * Free-tier Durable Objects hold this comfortably; storage can't creep.
+ */
+const MAX_DOC_BYTES = 4_000_000
+const MAX_WRITES_PER_MIN = 40
+const IDLE_DAYS = 45
+
+/** One board: an ephemeral photo slot plus the shared document. */
 export class BoardRoom {
   private state: DurableObjectState
   constructor(state: DurableObjectState) {
     this.state = state
+  }
+
+  private async rateLimited(): Promise<boolean> {
+    const now = Date.now()
+    const w = (await this.state.storage.get<{ n: number; at: number }>('rate')) ?? { n: 0, at: now }
+    const fresh = now - w.at > 60_000 ? { n: 0, at: now } : w
+    if (fresh.n >= MAX_WRITES_PER_MIN) return true
+    await this.state.storage.put('rate', { n: fresh.n + 1, at: fresh.at })
+    return false
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -55,6 +81,30 @@ export class BoardRoom {
         status,
         headers: { 'content-type': 'application/json' },
       })
+
+    if (new URL(req.url).pathname.startsWith('/room/')) {
+      const seen = await this.state.storage.get<number>('seen')
+      if (seen && Date.now() - seen > IDLE_DAYS * 86_400_000) {
+        await this.state.storage.delete('doc')
+      }
+      if (req.method === 'GET') {
+        const doc = await this.state.storage.get<unknown>('doc')
+        return doc ? json(doc) : json({ error: 'no shared board yet' }, 404)
+      }
+      if (req.method !== 'POST') return json({ error: 'method' }, 405)
+      if (await this.rateLimited()) return json({ error: 'too many writes, slow down' }, 429)
+
+      const text = await req.text()
+      if (text.length > MAX_DOC_BYTES) {
+        return json({ error: 'board exceeds the ' + Math.round(MAX_DOC_BYTES / 1e6) + ' MB share limit' }, 413)
+      }
+      const incoming = JSON.parse(text) as SyncDoc
+      const existing = await this.state.storage.get<SyncDoc>('doc')
+      const merged = existing ? mergeDocs(existing, incoming) : incoming
+      await this.state.storage.put('doc', merged)
+      await this.state.storage.put('seen', Date.now())
+      return json(merged)
+    }
 
     if (req.method === 'POST') {
       const body = (await req.json()) as { image?: string }
@@ -217,6 +267,18 @@ export default {
         if (!/^https?:\/\//.test(target)) return json({ error: 'bad url' }, 400, headers)
         const meta = await unfurl(target)
         return json(meta, 200, { ...headers, 'cache-control': 'public, max-age=86400' })
+      }
+
+      // Shared board document, one Durable Object per board.
+      const room = url.pathname.match(/^\/room\/([a-z0-9-]{1,40})$/i)
+      if (room && (req.method === 'POST' || req.method === 'GET')) {
+        if (!env.ROOMS) return json({ error: 'sharing not configured' }, 501, headers)
+        const obj = env.ROOMS.get(env.ROOMS.idFromName('board:' + room[1]))
+        const res = await obj.fetch(new Request(req.url, { method: req.method, body: req.body }))
+        return new Response(res.body, {
+          status: res.status,
+          headers: { 'content-type': 'application/json', ...headers },
+        })
       }
 
       const drop = url.pathname.match(/^\/drop\/([a-z0-9-]{1,40})$/i)

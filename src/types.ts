@@ -24,6 +24,8 @@ export interface CardMeta {
   filename?: string
   preview?: string[][] // small table preview for sheets
   unfurled?: boolean // enrichment finished (ok or gave up)
+  /** Synced from another device; the file itself never left that device. */
+  remote?: boolean
 }
 
 export interface Card {
@@ -37,6 +39,8 @@ export interface Card {
   poster?: string // captured snapshot for model/video faces
   addedBy: string // 'human' or an agent name ('claude', 'gemini', 'chatgpt', …)
   addedAt: number
+  /** Last edit, for sync's last-write-wins merge. Absent means never edited. */
+  updatedAt?: number
   accepted: boolean // human cards are born accepted; agent cards are provisional
   needs?: string // open handoff request ("transcribe this video")
   servedBy?: string // agent that fulfilled the request

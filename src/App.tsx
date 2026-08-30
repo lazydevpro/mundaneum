@@ -6,6 +6,7 @@ import { reapplyExtensions, registerBoardTools } from './mcp/tools'
 import { startWebMcp, type WebMcpStatus } from './mcp/webmcp'
 import { installPasteHandler } from './capture/ingest'
 import { installPhoneDropListener } from './capture/phone'
+import { joinIfShared, startSync } from './sync/sync'
 import { Canvas } from './ui/Canvas'
 import { AgentBar } from './ui/AgentBar'
 import { Brand, CornerControls, StatusLine } from './ui/Chrome'
@@ -59,6 +60,12 @@ export default function App() {
           })
           if (!c.meta?.unfurled) enrichCard(c.id)
         }
+      }
+      // Only after the local board is in memory — starting earlier would
+      // push an empty document over the shared copy.
+      if (!isCapture) {
+        startSync()
+        void joinIfShared() // opening a shared link brings the board with it
       }
       // Structure is derived state: boards that were organized before get
       // their clusters (and reattached labels) recomputed quietly.

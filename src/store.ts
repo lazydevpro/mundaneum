@@ -28,6 +28,8 @@ interface BoardState {
   annotations: Annotation[]
   agentProviders: RuntimeProvider[]
   agentTools: AgentToolDef[]
+  /** id -> deletion time; lets sync tell "deleted" from "not seen yet". */
+  deleted: Record<string, number>
   prefs: ViewPrefs
   filters: ProvenanceFilter
   selection: string[]
@@ -92,6 +94,7 @@ export interface Persisted {
   annotations?: Annotation[]
   agentProviders?: RuntimeProvider[]
   agentTools?: AgentToolDef[]
+  deleted?: Record<string, number>
   prefs?: ViewPrefs
 }
 
@@ -117,6 +120,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   annotations: [],
   agentProviders: [],
   agentTools: [],
+  deleted: {},
   prefs: { ...DEFAULT_PREFS },
   filters: { mode: 'all', hiddenAgents: [] },
   selection: [],
@@ -167,7 +171,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   updateCard(id, patch) {
     const c = get().cards[id]
     if (!c) return
-    set({ cards: { ...get().cards, [id]: { ...c, ...patch } } })
+    set({ cards: { ...get().cards, [id]: { ...c, ...patch, updatedAt: Date.now() } } })
   },
 
   removeCard(id) {
@@ -178,10 +182,15 @@ export const useBoard = create<BoardState>((set, get) => ({
     if (asset) void deleteAsset(asset)
     delete cards[id]
     delete positions[id]
+    // Tombstones, so a delete isn't undone by a stale copy from another device.
+    const deleted = { ...get().deleted, [id]: Date.now() }
     for (const [lid, l] of Object.entries(links)) {
-      if (l.from === id || l.to === id) delete links[lid]
+      if (l.from === id || l.to === id) {
+        delete links[lid]
+        deleted[lid] = Date.now()
+      }
     }
-    set({ cards, positions, links, selection: get().selection.filter((s) => s !== id) })
+    set({ cards, positions, links, deleted, selection: get().selection.filter((s) => s !== id) })
   },
 
   acceptCard(id) {
@@ -327,6 +336,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       annotations: data.annotations ?? [],
       agentProviders: data.agentProviders ?? [],
       agentTools: data.agentTools ?? [],
+      deleted: data.deleted ?? {},
       prefs: { ...DEFAULT_PREFS, ...data.prefs },
       clusters: [],
       selection: [],
@@ -336,7 +346,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   removeLink(id) {
     const links = { ...get().links }
     delete links[id]
-    set({ links })
+    set({ links, deleted: { ...get().deleted, [id]: Date.now() } })
   },
 
   addStroke(stroke) {
@@ -349,7 +359,9 @@ export const useBoard = create<BoardState>((set, get) => ({
 
   removeStrokes(ids) {
     const gone = new Set(ids)
-    set({ strokes: get().strokes.filter((st) => !gone.has(st.id)) })
+    const deleted = { ...get().deleted }
+    for (const id of ids) deleted[id] = Date.now()
+    set({ strokes: get().strokes.filter((st) => !gone.has(st.id)), deleted })
   },
 
   addAnnotation(a) {
@@ -358,7 +370,9 @@ export const useBoard = create<BoardState>((set, get) => ({
 
   removeAnnotations(ids) {
     const gone = new Set(ids)
-    set({ annotations: get().annotations.filter((an) => !gone.has(an.id)) })
+    const deleted = { ...get().deleted }
+    for (const id of ids) deleted[id] = Date.now()
+    set({ annotations: get().annotations.filter((an) => !gone.has(an.id)), deleted })
   },
 
   /** A declared group: clustering keeps these together and names the cluster. */
@@ -415,6 +429,7 @@ useBoard.subscribe((s) => {
       annotations: s.annotations,
       agentProviders: s.agentProviders,
       agentTools: s.agentTools,
+      deleted: s.deleted,
       prefs: s.prefs,
     }
     void idbSet(key(s.boardId), data)

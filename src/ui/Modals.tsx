@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { boardUrl } from '../boardId'
 import { useBoard } from '../store'
-import { apiKey, proxyUrl, setApiKey, setProxyUrl, type ProviderId } from '../agents/config'
+import { apiKey, proxyUrl, serviceBase, setApiKey, setProxyUrl, type ProviderId } from '../agents/config'
 import { dropEndpoint, startPhonePolling, stopPhonePolling } from '../capture/phone'
+import { disableSharing, enableSharing, isShared, useSync } from '../sync/sync'
 import type { ModalKind } from './PlusMenu'
 
 export function Modals({ kind, close }: { kind: ModalKind; close: () => void }) {
@@ -47,6 +48,94 @@ function QrModal() {
           ? ' Photos arrive here whenever you come back to this window.'
           : ' Deploy the worker (or set a proxy URL under agents…) to bridge photos to this screen.'}
       </p>
+      <SharePanel />
+    </div>
+  )
+}
+
+/**
+ * Sharing is opt-in per board: until this is switched on, nothing about the
+ * board has ever left the device. Large files stay local by design — only the
+ * board and its compressed images travel, which is what keeps this free.
+ */
+function SharePanel() {
+  const boardId = useBoard((s) => s.boardId)
+  const cards = useBoard((s) => s.cards)
+  const syncState = useSync((s) => s.state)
+  const syncDetail = useSync((s) => s.detail)
+  const [shared, setShared] = useState(() => isShared(boardId))
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const available = serviceBase() !== null
+  const link = boardUrl(boardId)
+
+  const localOnly = Object.values(cards).filter((c) => c.meta?.asset).length
+
+  if (!available) {
+    return (
+      <p className="share-note">
+        Sharing needs the worker — deploy it, or set a proxy URL under agents….
+      </p>
+    )
+  }
+
+  return (
+    <div className="share-panel">
+      {!shared ? (
+        <>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              const ok = await enableSharing()
+              setShared(ok)
+              setBusy(false)
+            }}
+          >
+            {busy ? 'sharing…' : 'share this board'}
+          </button>
+          <p className="share-note">
+            Opens this board to anyone with the link, on any device. Nothing has
+            left this device yet.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="share-link">
+            <input readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+            <button
+              onClick={() => {
+                void navigator.clipboard?.writeText(link)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1600)
+              }}
+            >
+              {copied ? 'copied' : 'copy'}
+            </button>
+          </div>
+          <p className="share-note">
+            <span className={'live-dot' + (syncState === 'live' ? ' on' : '')} />{' '}
+            {syncState === 'error' ? syncDetail : 'shared — ' + (syncDetail || 'syncing')}
+            {localOnly > 0 && (
+              <>
+                <br />
+                {localOnly} file{localOnly > 1 ? 's' : ''} (video, 3D, documents) stay on
+                this device — their cards travel, the files don't.
+              </>
+            )}
+          </p>
+          <button
+            className="quiet"
+            onClick={() => {
+              disableSharing()
+              setShared(false)
+            }}
+          >
+            stop sharing
+          </button>
+        </>
+      )}
     </div>
   )
 }
