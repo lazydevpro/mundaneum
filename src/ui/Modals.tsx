@@ -147,10 +147,16 @@ function SettingsModal({ close }: { close: () => void }) {
 
   return (
     <div className="modal" style={{ width: 360 }}>
-      <h3>Agents</h3>
+      <h3>In-page agents (optional)</h3>
       <p>
-        Point at a deployed worker proxy (keys stay server-side), or paste keys for
-        local use — they live only in this browser's localStorage.
+        Agents in your browser — ChatGPT's browser, Chrome's built-in agent —
+        connect through WebMCP automatically. <b>No keys needed for that.</b>
+      </p>
+      <p>
+        Keys are only for summoning a crew from inside the page (Claude +
+        Gemini + Grok working the board together). Point at a deployed worker
+        proxy (keys stay server-side), or paste keys for local use — they live
+        only in this browser's localStorage.
       </p>
       <div className="settings-grid">
         <label>

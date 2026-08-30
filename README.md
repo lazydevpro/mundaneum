@@ -58,6 +58,12 @@ accept/reject on hover. Filter: mine only / accepted / pending / per-agent.
 
 ## Multi-agent paths
 
+**The core experience needs no API keys.** WebMCP is bring-your-own-agent:
+the page registers tools; the agent already in your browser calls them. Keys
+exist only for the optional in-page crew (path A) — the one way to get three
+vendors working the same board simultaneously, and a video-capable Gemini
+standing by to serve handoffs.
+
 - **A — In-page agents.** A small agent loop in the page (Claude / Gemini /
   Grok) drives the same internal registry the WebMCP tools wrap. Backed by a
   Cloudflare Worker proxy (`worker/`) with routes `/anthropic`, `/gemini`,
