@@ -1,6 +1,6 @@
 import type { Card, CardType } from '../types'
 import { liveCards, useBoard } from '../store'
-import { clusterTerms, duplicatePairs, latestGraph, organize, scheduleOrganize } from '../engine/engine'
+import { applyArrangement, clusterTerms, duplicatePairs, latestGraph, organize, scheduleOrganize } from '../engine/engine'
 import { spatial } from '../engine/spatial'
 import { classifyUrl } from '../embed/providers'
 import { compressImage } from '../capture/ingest'
@@ -148,6 +148,13 @@ export function registerBoardTools(): void {
               })),
             }
           : {}),
+        ...(s.annotations.length
+          ? {
+              annotations: s.annotations.map((an) => ({
+                id: an.id, kind: an.kind, by: an.by, note: an.note ?? null, cards: an.cardIds,
+              })),
+            }
+          : {}),
         ...(s.selection.length ? { human_selection: s.selection } : {}),
         filters: s.filters,
       })
@@ -159,7 +166,7 @@ export function registerBoardTools(): void {
     name: 'add_cards',
     title: 'Add cards',
     description:
-      'Contribute material to the board (batch): text, links, videos, IMAGES (a data: URL or https image URL — expiring generated-image URLs are re-hosted permanently), and WIDGETS (type "widget": a complete self-contained HTML document with inline JS/CSS — it runs on the board in a locked sandbox with no access to the page, its storage, or other cards; give it a title and a one-line description). Cards land as provisional until the human accepts them, signed with your agent name. Use for_card to serve an open help request. Never include coordinates — the page places everything.',
+      'Contribute material to the board (batch): text; URLS that become rich embeds automatically (YouTube/Vimeo/Loom videos, Spotify/Apple Music/SoundCloud players and playlists, Instagram/TikTok posts, articles with title+preview); IMAGES (a data: URL or https image URL — expiring generated-image URLs are re-hosted permanently), and WIDGETS (type "widget": a complete self-contained HTML document with inline JS/CSS — it runs on the board in a locked sandbox with no access to the page, its storage, or other cards; give it a title and a one-line description). Cards land as provisional until the human accepts them, signed with your agent name. Use for_card to serve an open help request. Never include coordinates — the page places everything.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -455,6 +462,93 @@ export function registerBoardTools(): void {
           ? { refused, note: 'refused pairs were not page-verified duplicates' }
           : {}),
       })
+    },
+  })
+
+  // --------------------------------------------------------- set_arrangement
+  defineTool({
+    name: 'set_arrangement',
+    title: 'Set the arrangement',
+    description:
+      'Choose how the page projects the board: "clusters" (semantic islands), "grid" (uniform), "masonry" (tiled wall), "row", "column", or "tree" (the directed link graph as a layered hierarchy). You express the intent; the page computes every position. Use "tree" after building links, "grid"/"masonry" for browsing, "clusters" for meaning.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode: {
+          type: 'string',
+          enum: ['clusters', 'masonry', 'grid', 'row', 'column', 'tree'],
+        },
+      },
+      required: ['mode'],
+    },
+    execute: (input, { agent }) => {
+      const mode = String(input.mode) as 'clusters' | 'masonry' | 'grid' | 'row' | 'column' | 'tree'
+      if (!['clusters', 'masonry', 'grid', 'row', 'column', 'tree'].includes(mode)) {
+        return JSON.stringify({ error: 'unknown mode: ' + mode })
+      }
+      applyArrangement(mode)
+      useBoard.getState().logActivity(agent, 'arranged the board as ' + mode)
+      return JSON.stringify({ ok: true, arrangement: mode })
+    },
+  })
+
+  // -------------------------------------------------------------- group_cards
+  defineTool({
+    name: 'group_cards',
+    title: 'Group cards',
+    description:
+      'Declare that a set of cards belongs together under a name. The clustering engine will keep them in one cluster and label it with your name — this is how you group things manually without touching positions. Re-using a name replaces that group.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Short group name (1-4 words).' },
+        card_ids: { type: 'array', maxItems: 30, items: { type: 'string' } },
+        ...agentProp,
+      },
+      required: ['name', 'card_ids'],
+    },
+    execute: async (input, { agent }) => {
+      const st = useBoard.getState()
+      const ids = ((input.card_ids as unknown[]) ?? []).map(String).filter((id) => st.cards[id])
+      if (ids.length < 2) return JSON.stringify({ error: 'need at least 2 existing card ids' })
+      const name = String(input.name ?? '').slice(0, 40).trim()
+      if (!name) return JSON.stringify({ error: 'name is required' })
+      st.addGroup(name, ids, agent)
+      st.logActivity(agent, 'grouped ' + ids.length + ' cards as "' + name + '"')
+      await organize()
+      return JSON.stringify({ ok: true, group: name, members: ids.length })
+    },
+  })
+
+  // ----------------------------------------------------------- annotate_cards
+  defineTool({
+    name: 'annotate_cards',
+    title: 'Draw around cards',
+    description:
+      'Draw on the board without coordinates: name the cards and the page draws a box or circle around wherever they are (the drawing follows them). Optional note renders beside it. This is agent drawing — content-anchored, geometry stays with the page. The human eraser can remove it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card_ids: { type: 'array', maxItems: 30, items: { type: 'string' } },
+        kind: { type: 'string', enum: ['box', 'circle'], description: 'Default box.' },
+        note: { type: 'string', description: 'Optional caption, a few words.' },
+        ...agentProp,
+      },
+      required: ['card_ids'],
+    },
+    execute: (input, { agent }) => {
+      const st = useBoard.getState()
+      const ids = ((input.card_ids as unknown[]) ?? []).map(String).filter((id) => st.cards[id])
+      if (!ids.length) return JSON.stringify({ error: 'no existing card ids given' })
+      const kind = input.kind === 'circle' ? 'circle' : 'box'
+      st.addAnnotation({
+        kind,
+        cardIds: ids,
+        note: input.note ? String(input.note).slice(0, 80) : undefined,
+        by: agent,
+      })
+      st.logActivity(agent, 'drew a ' + kind + ' around ' + ids.length + ' card' + (ids.length > 1 ? 's' : ''))
+      return JSON.stringify({ ok: true, kind, around: ids.length })
     },
   })
 

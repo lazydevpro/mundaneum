@@ -82,6 +82,15 @@ export interface Stroke {
   points: XY[] // draw: polyline; line/rect/ellipse: [start, end]
 }
 
+/** Content-anchored agent drawing: the page computes where it lands. */
+export interface Annotation {
+  id: string
+  kind: 'box' | 'circle'
+  cardIds: string[]
+  note?: string
+  by: string
+}
+
 export type CardStyle = 'pure' | 'cards'
 export type Arrangement = 'clusters' | 'masonry' | 'grid' | 'row' | 'column' | 'tree'
 

@@ -79,7 +79,7 @@ async function doOrganize(): Promise<void> {
 
   useBoard.getState().setEngine('organizing')
   const links = Object.values(useBoard.getState().links)
-  latest = buildGraph(cards, links, vectors)
+  latest = buildGraph(cards, links, vectors, useBoard.getState().labels)
 
   // Communities -> clusters (label reattachment happens in the store).
   const byCommunity = new Map<number, Card[]>()

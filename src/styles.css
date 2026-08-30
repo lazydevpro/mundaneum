@@ -979,3 +979,22 @@ textarea {
 .widget-face .face-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .widget-face .title { -webkit-line-clamp: 1; }
 .live-body iframe[srcdoc] { background: #fffdf7; }
+
+/* ---------- agent annotations: content-anchored drawing ---------- */
+
+.annots {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+.annots rect, .annots ellipse {
+  fill: color-mix(in srgb, var(--amber) 5%, transparent);
+  stroke: var(--amber);
+  stroke-width: 1.6;
+  stroke-dasharray: 7 5;
+}
+.annots text {
+  fill: var(--amber);
+  font-size: 13px;
+  font-family: var(--sans);
+}

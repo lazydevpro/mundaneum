@@ -30,6 +30,7 @@ export function Canvas() {
   const links = useBoard((s) => s.links)
   const clusters = useBoard((s) => s.clusters)
   const selection = useBoard((s) => s.selection)
+  const annotations = useBoard((s) => s.annotations)
   const style = useBoard((s) => s.prefs.style)
   const arrangement = useBoard((s) => s.prefs.arrangement)
   const pen = useInk((s) => s.pen)
@@ -312,6 +313,31 @@ export function Canvas() {
       .map((x) => x.id)
     if (deadStrokes.length) st.removeStrokes(deadStrokes)
 
+    const deadAnnots = st.annotations
+      .filter((an) => {
+        const pts = an.cardIds
+          .map((id) => {
+            const pos = st.positions[id]
+            const c = st.cards[id]
+            if (!pos || !c) return null
+            const { w, h } = cardSize(c)
+            return { pos, w, h }
+          })
+          .filter((x): x is { pos: XY; w: number; h: number } => Boolean(x))
+        if (!pts.length) return false
+        const minX = Math.min(...pts.map((x) => x.pos.x - x.w / 2)) - 22
+        const maxX = Math.max(...pts.map((x) => x.pos.x + x.w / 2)) + 22
+        const minY = Math.min(...pts.map((x) => x.pos.y - x.h / 2)) - 22
+        const maxY = Math.max(...pts.map((x) => x.pos.y + x.h / 2)) + 22
+        const outline = rectOutline({ x: minX, y: minY }, { x: maxX, y: maxY })
+        for (let i = 0; i < outline.length - 1; i++) {
+          if (distToSeg(p, outline[i], outline[i + 1]) < r) return true
+        }
+        return false
+      })
+      .map((an) => an.id)
+    if (deadAnnots.length) st.removeAnnotations(deadAnnots)
+
     for (const l of Object.values(st.links)) {
       const a = st.positions[l.from]
       const b = st.positions[l.to]
@@ -486,6 +512,46 @@ export function Canvas() {
             )
           })}
         </svg>
+
+        {annotations.length > 0 && (
+          <svg className="annots" width="1" height="1">
+            {annotations.map((an) => {
+              const pts = an.cardIds
+                .map((id) => {
+                  const p = positions[id]
+                  const c = useBoard.getState().cards[id]
+                  if (!p || !c || c.mergedInto) return null
+                  const { w, h } = cardSize(c)
+                  return { p, w, h }
+                })
+                .filter((x): x is { p: XY; w: number; h: number } => Boolean(x))
+              if (!pts.length) return null
+              const minX = Math.min(...pts.map((x) => x.p.x - x.w / 2)) - 22
+              const maxX = Math.max(...pts.map((x) => x.p.x + x.w / 2)) + 22
+              const minY = Math.min(...pts.map((x) => x.p.y - x.h / 2)) - 22
+              const maxY = Math.max(...pts.map((x) => x.p.y + x.h / 2)) + 22
+              return (
+                <g key={an.id}>
+                  {an.kind === 'circle' ? (
+                    <ellipse
+                      cx={(minX + maxX) / 2}
+                      cy={(minY + maxY) / 2}
+                      rx={((maxX - minX) / 2) * 1.12}
+                      ry={((maxY - minY) / 2) * 1.18}
+                    />
+                  ) : (
+                    <rect x={minX} y={minY} width={maxX - minX} height={maxY - minY} rx={16} />
+                  )}
+                  {an.note && (
+                    <text x={minX + 6} y={minY - 10}>
+                      {an.note} — {an.by}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+          </svg>
+        )}
 
         {arrangement === 'clusters' &&
           clusters.map((c) => {

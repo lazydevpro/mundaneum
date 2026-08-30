@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type {
-  Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment, Link,
-  ProvenanceFilter, Stroke, ViewPrefs, XY,
+  Annotation, Card, CardMeta, CardType, Cluster, EngineStatus, LabelAssignment,
+  Link, ProvenanceFilter, Stroke, ViewPrefs, XY,
 } from './types'
 import { deleteAsset } from './capture/assets'
 import { currentBoardId, newId } from './boardId'
@@ -24,6 +24,7 @@ interface BoardState {
   clusters: Cluster[]
   labels: LabelAssignment[]
   strokes: Stroke[]
+  annotations: Annotation[]
   prefs: ViewPrefs
   filters: ProvenanceFilter
   selection: string[]
@@ -69,6 +70,9 @@ interface BoardState {
   addStroke(s: Omit<Stroke, 'id'>): void
   undoStroke(): void
   removeStrokes(ids: string[]): void
+  addAnnotation(a: Omit<Annotation, 'id'>): void
+  removeAnnotations(ids: string[]): void
+  addGroup(name: string, cardIds: string[], by: string): void
   setPrefs(p: Partial<ViewPrefs>): void
 }
 
@@ -79,6 +83,7 @@ export interface Persisted {
   positions: Record<string, XY>
   labels: LabelAssignment[]
   strokes?: Stroke[]
+  annotations?: Annotation[]
   prefs?: ViewPrefs
 }
 
@@ -101,6 +106,7 @@ export const useBoard = create<BoardState>((set, get) => ({
   clusters: [],
   labels: [],
   strokes: [],
+  annotations: [],
   prefs: { ...DEFAULT_PREFS },
   filters: { mode: 'all', hiddenAgents: [] },
   selection: [],
@@ -308,6 +314,7 @@ export const useBoard = create<BoardState>((set, get) => ({
       positions: data.positions,
       labels: data.labels,
       strokes: data.strokes ?? [],
+      annotations: data.annotations ?? [],
       prefs: { ...DEFAULT_PREFS, ...data.prefs },
       clusters: [],
       selection: [],
@@ -331,6 +338,22 @@ export const useBoard = create<BoardState>((set, get) => ({
   removeStrokes(ids) {
     const gone = new Set(ids)
     set({ strokes: get().strokes.filter((st) => !gone.has(st.id)) })
+  },
+
+  addAnnotation(a) {
+    set({ annotations: [...get().annotations, { ...a, id: newId('an') }] })
+  },
+
+  removeAnnotations(ids) {
+    const gone = new Set(ids)
+    set({ annotations: get().annotations.filter((an) => !gone.has(an.id)) })
+  },
+
+  /** A declared group: clustering keeps these together and names the cluster. */
+  addGroup(name, cardIds, by) {
+    const labels = get().labels.filter((l) => l.label !== name)
+    labels.push({ label: name, labeledBy: by, cardIds: [...cardIds] })
+    set({ labels })
   },
 
   setPrefs(p) {
@@ -361,6 +384,7 @@ useBoard.subscribe((s) => {
       positions: s.positions,
       labels: s.labels,
       strokes: s.strokes,
+      annotations: s.annotations,
       prefs: s.prefs,
     }
     void idbSet(key(s.boardId), data)

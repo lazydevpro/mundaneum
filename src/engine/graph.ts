@@ -1,6 +1,6 @@
 import Graph from 'graphology'
 import louvain from 'graphology-communities-louvain'
-import type { Card, Link } from '../types'
+import type { Card, LabelAssignment, Link } from '../types'
 
 /**
  * The page does the O(n^2) work so agents spend context on judgment.
@@ -23,6 +23,7 @@ export function buildGraph(
   cards: Card[],
   links: Link[],
   vectors: Map<string, Float32Array>,
+  groups: LabelAssignment[] = [],
 ): BoardGraph {
   const graph = new Graph({ type: 'undirected', multi: false })
   for (const c of cards) graph.addNode(c.id)
@@ -67,6 +68,13 @@ export function buildGraph(
   // explicit agent/human links are strong evidence
   for (const l of links) {
     if (graph.hasNode(l.from) && graph.hasNode(l.to)) addEdge(l.from, l.to, 1.2)
+  }
+  // declared groups bind hardest: the community must hold together
+  for (const g of groups) {
+    const members = g.cardIds.filter((id) => graph.hasNode(id)).slice(0, 24)
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) addEdge(members[i], members[j], 2.5)
+    }
   }
 
   const communities = new Map<string, number>()
