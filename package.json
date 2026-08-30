@@ -1,0 +1,38 @@
+{
+  "name": "mundaneum",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An infinite research board that agents can add to and organize, but never arrange.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b --noCheck && vite build",
+    "typecheck": "tsc -b",
+    "preview": "vite preview --port 4173",
+    "worker:dev": "wrangler dev worker/index.ts",
+    "worker:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.6",
+    "d3-force": "^3.0.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "idb-keyval": "^6.2.2",
+    "qrcode": "^1.5.4",
+    "rbush": "^4.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10",
+    "@types/qrcode": "^1.5.6",
+    "@types/rbush": "^4.0.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}

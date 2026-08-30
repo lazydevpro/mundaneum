@@ -1,0 +1,15 @@
+name = "mundaneum-proxy"
+main = "worker/index.ts"
+compatibility_date = "2026-08-01"
+
+# Secrets (set with `wrangler secret put <NAME>`):
+#   ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY
+#
+# Optional: lock CORS to the deployed app origin.
+# [vars]
+# ALLOWED_ORIGIN = "https://mundaneum.example"
+#
+# Optional: durable phone-drop slots (otherwise best-effort in-memory).
+# [[kv_namespaces]]
+# binding = "DROPS"
+# id = "<create with: wrangler kv namespace create DROPS>"
