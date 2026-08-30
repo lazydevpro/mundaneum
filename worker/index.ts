@@ -48,13 +48,55 @@ function json(data: unknown, status: number, headers: Record<string, string>): R
   })
 }
 
+interface Ctx {
+  waitUntil(p: Promise<unknown>): void
+}
+
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: Ctx): Promise<Response> {
     const url = new URL(req.url)
     const headers = cors(env, req.headers.get('origin'))
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
 
     try {
+      // Model files proxied through this origin: ad/privacy blockers that
+      // kill cross-origin fetches to huggingface.co can't touch same-origin
+      // requests, and the edge cache spares HF repeat downloads.
+      if (url.pathname.startsWith('/hf/') && req.method === 'GET') {
+        const target = 'https://huggingface.co/' + url.pathname.slice(4) + url.search
+        const cache = (caches as unknown as { default: Cache }).default
+        const cacheKey = new Request(target)
+        const hit = await cache.match(cacheKey)
+        if (hit) return hit
+        const upstream = await fetch(target, { redirect: 'follow' })
+        if (!upstream.ok) {
+          return json({ error: 'upstream ' + upstream.status }, upstream.status, headers)
+        }
+        const res = new Response(upstream.body, {
+          status: 200,
+          headers: {
+            'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+            'cache-control': 'public, max-age=31536000, immutable',
+            ...headers,
+          },
+        })
+        ctx.waitUntil(cache.put(cacheKey, res.clone()))
+        return res
+      }
+
+      if (url.pathname === '/health' && req.method === 'GET') {
+        // Which in-page agents this deployment can serve; never the keys.
+        return json(
+          {
+            anthropic: Boolean(env.ANTHROPIC_API_KEY),
+            gemini: Boolean(env.GEMINI_API_KEY),
+            xai: Boolean(env.XAI_API_KEY),
+          },
+          200,
+          headers,
+        )
+      }
+
       if (url.pathname === '/anthropic' && req.method === 'POST') {
         if (!env.ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY not set' }, 501, headers)
         const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -207,6 +249,14 @@ async function unfurl(target: string): Promise<Record<string, string>> {
   }
 
   if (!out.title && title.trim()) out.title = title.trim().slice(0, 300)
+  for (const k of Object.keys(out)) {
+    out[k] = out[k]
+      .replace(/&amp;/g, '&')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+  }
   if (out.image && out.image.startsWith('/')) {
     try {
       out.image = new URL(out.image, target).href

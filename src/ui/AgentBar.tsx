@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { agentMark } from '../agents/identity'
-import { providerConfigured, type ProviderId } from '../agents/config'
+import { providerConfigured, useAgentAvail, type ProviderId } from '../agents/config'
 import { runAgent } from '../agents/driver'
 import { liveCards, useBoard } from '../store'
 
@@ -17,6 +17,7 @@ export function AgentBar({ onNeedsSetup }: { onNeedsSetup: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const sayTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hasCards = useBoard((s) => liveCards(s.cards).length > 0)
+  useAgentAvail((s) => s.health) // re-render when /health answers
 
   // Zero-setup story stays visually pure: the in-page crew's pill appears
   // only once a proxy or key is configured (+ menu -> agents…). WebMCP

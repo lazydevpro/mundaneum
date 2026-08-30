@@ -1,13 +1,17 @@
-name = "mundaneum-proxy"
+name = "mundaneum"
 main = "worker/index.ts"
 compatibility_date = "2026-08-01"
 
+# One origin for everything: the built app is served as static assets, and
+# any path that isn't an asset (/anthropic, /gemini, /xai, /unfurl, /drop/*,
+# /health) falls through to the worker script.
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
 # Secrets (set with `wrangler secret put <NAME>`):
 #   ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY
-#
-# Optional: lock CORS to the deployed app origin.
-# [vars]
-# ALLOWED_ORIGIN = "https://mundaneum.example"
+# The app probes /health and only offers in-page agents that have keys.
 #
 # Optional: durable phone-drop slots (otherwise best-effort in-memory).
 # [[kv_namespaces]]

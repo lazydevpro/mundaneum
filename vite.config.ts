@@ -29,6 +29,17 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: { exclude: ['@huggingface/transformers'] },
     worker: { format: 'es' },
     build: { target: 'es2022' },
-    server: { host: true },
+    server: {
+      host: true,
+      proxy: {
+        // mirror the deployed worker's /hf/* model proxy in dev
+        '/hf': {
+          target: 'https://huggingface.co',
+          changeOrigin: true,
+          rewrite: (p: string) => p.slice('/hf'.length),
+          followRedirects: true,
+        },
+      },
+    },
   }
 })

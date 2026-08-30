@@ -1,5 +1,5 @@
 import { useBoard } from '../store'
-import { proxyUrl } from '../agents/config'
+import { serviceBase } from '../agents/config'
 import { hostOf } from './providers'
 import type { CardMeta } from '../types'
 
@@ -115,10 +115,10 @@ async function tryNoembed(url: string): Promise<CardMeta | null> {
 }
 
 async function tryWorkerUnfurl(url: string): Promise<CardMeta | null> {
-  const proxy = proxyUrl()
-  if (!proxy) return null
+  const base = serviceBase()
+  if (base === null) return null
   try {
-    const res = await fetch(proxy + '/unfurl?url=' + encodeURIComponent(url), {
+    const res = await fetch(base + '/unfurl?url=' + encodeURIComponent(url), {
       signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return null

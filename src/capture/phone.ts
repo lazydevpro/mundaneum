@@ -1,4 +1,4 @@
-import { proxyUrl } from '../agents/config'
+import { serviceBase } from '../agents/config'
 import { useBoard } from '../store'
 
 /**
@@ -8,8 +8,8 @@ import { useBoard } from '../store'
  */
 
 export function dropEndpoint(boardId: string): string | null {
-  const proxy = proxyUrl()
-  return proxy ? proxy + '/drop/' + encodeURIComponent(boardId) : null
+  const base = serviceBase()
+  return base === null ? null : base + '/drop/' + encodeURIComponent(boardId)
 }
 
 export async function sendToDesktop(boardId: string, dataUrl: string): Promise<boolean> {

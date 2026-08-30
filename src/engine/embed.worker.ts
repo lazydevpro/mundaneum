@@ -7,6 +7,9 @@
 import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers'
 
 env.allowLocalModels = false
+// Model files come through our own origin (/hf/* proxy in dev and prod):
+// same-origin fetches are immune to extensions that block huggingface.co.
+env.remoteHost = self.location.origin + '/hf/'
 
 let extractor: Promise<FeatureExtractionPipeline> | null = null
 
