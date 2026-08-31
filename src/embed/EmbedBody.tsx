@@ -348,15 +348,136 @@ function LiveInner({ card }: { card: Card }) {
    */
   const trustedProvider = Boolean(meta.provider) && meta.provider !== 'article' && Boolean(meta.embedUrl)
   return (
-    <iframe
+    <ProviderFrame
+      card={card}
       src={src}
-      title={card.title ?? src}
-      {...(trustedProvider ? {} : { sandbox: IFRAME_SANDBOX })}
-      allow={IFRAME_ALLOW}
-      referrerPolicy="strict-origin-when-cross-origin"
-      loading="lazy"
-      scrolling={isWidget ? 'no' : undefined}
+      sandboxed={!trustedProvider}
+      noScroll={isWidget}
     />
+  )
+}
+
+// ------------------------------------------------------- when embeds fail
+
+const STALL_MS = 6000
+
+/**
+ * How far we can honestly get at detecting a broken embed.
+ *
+ * A cross-origin frame that answers with a sign-in wall, an age gate or a bot
+ * check is a *successful* load as far as the DOM is concerned: status 200,
+ * `load` fires, and same-origin policy hides what is actually rendered. There
+ * is no event for "the site refused you". So this does not pretend to know.
+ * It reports two things it can stand behind — the frame errored, or it never
+ * finished loading at all — and otherwise just notes that the embed has had
+ * long enough to start, which is when offering a way out becomes useful.
+ */
+function useEmbedTrouble(src: string) {
+  const [loaded, setLoaded] = useState(false)
+  const [errored, setErrored] = useState(false)
+  const [waited, setWaited] = useState(false)
+
+  useEffect(() => {
+    setLoaded(false)
+    setErrored(false)
+    setWaited(false)
+    const t = setTimeout(() => setWaited(true), STALL_MS)
+    return () => clearTimeout(t)
+  }, [src])
+
+  return {
+    onLoad: () => setLoaded(true),
+    onError: () => setErrored(true),
+    /** Certain: nothing is there to look at. */
+    dead: errored || (waited && !loaded),
+    /** Loaded, but whether it works is unknowable from out here. */
+    unverifiable: waited && loaded,
+  }
+}
+
+function sourceOf(card: Card): { url: string | null; site: string } {
+  const url = /^https?:\/\//.test(card.content) ? card.content : null
+  return { url, site: card.meta?.site ?? (url ? hostOf(url) : 'the source') }
+}
+
+function ProviderFrame({
+  card,
+  src,
+  sandboxed,
+  noScroll,
+}: {
+  card: Card
+  src: string
+  sandboxed: boolean
+  noScroll: boolean
+}) {
+  const trouble = useEmbedTrouble(src)
+  if (trouble.dead) return <EmbedFallback card={card} />
+  return (
+    <div className="frame-wrap">
+      <iframe
+        src={src}
+        title={card.title ?? src}
+        {...(sandboxed ? { sandbox: IFRAME_SANDBOX } : {})}
+        allow={IFRAME_ALLOW}
+        referrerPolicy="strict-origin-when-cross-origin"
+        loading="lazy"
+        scrolling={noScroll ? 'no' : undefined}
+        onLoad={trouble.onLoad}
+        onError={trouble.onError}
+      />
+      {trouble.unverifiable && <EmbedHint card={card} />}
+    </div>
+  )
+}
+
+/** The frame is definitively empty — say so, and keep the material reachable. */
+function EmbedFallback({ card }: { card: Card }) {
+  const { url, site } = sourceOf(card)
+  const poster = card.poster ?? card.meta?.image
+  return (
+    <div className="embed-blocked">
+      {poster && (
+        <img className="blocked-poster" src={poster} alt="" draggable={false} referrerPolicy="no-referrer" />
+      )}
+      <span className="blocked-title">{site} didn’t load here</span>
+      <span className="blocked-sub">
+        The site may refuse embedding, or want a sign-in.
+      </span>
+      {url && (
+        <a
+          className="blocked-open"
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          Open on {site} ↗
+        </a>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The embed loaded and may well be fine — so this never covers it. It is a
+ * thin line offering the source, for the case the page cannot see: a wall
+ * rendered inside the frame.
+ */
+function EmbedHint({ card }: { card: Card }) {
+  const [dismissed, setDismissed] = useState(false)
+  const { url, site } = sourceOf(card)
+  if (dismissed || !url) return null
+  return (
+    <div className="embed-hint" onPointerDown={(e) => e.stopPropagation()}>
+      <span>Not playing?</span>
+      <a href={url} target="_blank" rel="noreferrer noopener">
+        open on {site} ↗
+      </a>
+      <button onClick={() => setDismissed(true)} title="dismiss">
+        <Icon name="x" size={9} />
+      </button>
+    </div>
   )
 }
 
