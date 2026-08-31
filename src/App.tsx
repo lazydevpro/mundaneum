@@ -19,7 +19,7 @@ import { CapturePage } from './ui/CapturePage'
 import { maybeLoadRelay } from './mcp/relay'
 import { classifyUrl } from './embed/providers'
 import { enrichCard } from './embed/unfurl'
-import { callTool } from './mcp/registry'
+import { allTools, applicableTools, callTool } from './mcp/registry'
 import { useActive } from './embed/active'
 import { probeProxy } from './agents/config'
 import { latestGraph, organize } from './engine/engine'
@@ -27,7 +27,10 @@ import { latestGraph, organize } from './engine/engine'
 // Dev/demo handle: lets you poke the same tool surface agents use.
 if (import.meta.env.DEV) {
   Object.assign(window as object, {
-    __mundaneum: { useBoard, callTool, organize, latestGraph, useActive },
+    __mundaneum: {
+      useBoard, callTool, organize, latestGraph, useActive,
+      allTools, applicableTools, startWebMcp,
+    },
   })
 }
 
