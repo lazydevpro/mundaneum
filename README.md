@@ -74,9 +74,28 @@ standing by to serve handoffs.
   no exclusive data, and we say so).
 - **B — ChatGPT desktop** (the judged path). Open the deployed URL in
   ChatGPT's built-in browser; the WebMCP tools appear with zero setup.
-- **C — External Claude** via `@mcp-b/webmcp-local-relay`: add `#relay=1` to
-  the URL with the local relay host running, and Claude Desktop / Claude Code
-  joins the same board over MCP.
+- **C — Classic MCP**, for every client that doesn't speak WebMCP. Share a
+  board and it gets an MCP endpoint at `/mcp/<boardId>` (the WebMCP panel
+  shows the URL with a copy button). Point Claude Desktop, Claude Code, or
+  Codex at it and they work the same board as the browser — same tools, same
+  provenance, changes appearing in every open tab on the next sync:
+
+  ```json
+  { "mcpServers": { "mundaneum": { "url": "https://…/mcp/<boardId>" } } }
+  ```
+
+  It speaks JSON-RPC over plain HTTP POST (Streamable HTTP, stateless — no
+  session, no SSE) and runs *inside* the board's Durable Object, which is
+  single-threaded, so each tool call is an atomic read-modify-write.
+
+  Nine of the tools live there: `get_board`, `add_cards`, `link_cards`,
+  `group_cards`, `ask_region`, `annotate_cards`, `draw_sketch`,
+  `set_arrangement`, `request_help`. The ones that need the page's engine —
+  clustering by embedding, near-duplicate detection — are deliberately
+  absent rather than faked, because that work belongs to the open board.
+
+  `#relay=1` still loads `@mcp-b/webmcp-local-relay` if you'd rather bridge
+  an unshared, local-only board to a desktop MCP client.
 
 ## Capture — anything is a card
 

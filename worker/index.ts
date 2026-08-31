@@ -21,6 +21,7 @@
 // The merge rule is shared with the client rather than reimplemented here,
 // so the two can't drift apart (the module is types + pure functions only).
 import { mergeDocs, type SyncDoc } from '../src/sync/doc'
+import { handleMcpRequest } from './mcp'
 
 export interface Env {
   ANTHROPIC_API_KEY?: string
@@ -81,6 +82,44 @@ export class BoardRoom {
         status,
         headers: { 'content-type': 'application/json' },
       })
+
+    // MCP runs inside the DO: single-threaded, so a tool call is an atomic
+    // read-modify-write on this board's document.
+    if (new URL(req.url).pathname.startsWith('/mcp')) {
+      if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
+      const doc = await this.state.storage.get<SyncDoc>('doc')
+      if (!doc) {
+        return json(
+          {
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32001,
+              message:
+                'That board has not been shared yet. Open it in a browser and press Share, then connect to this URL again.',
+            },
+          },
+          404,
+        )
+      }
+      const body = (await req.json()) as Record<string, unknown>
+      const batch = Array.isArray(body) ? body : [body]
+      const replies: unknown[] = []
+      let dirty = false
+      for (const one of batch) {
+        const { response, changed } = handleMcpRequest(one as Record<string, unknown>, doc)
+        if (changed) dirty = true
+        if (response) replies.push(response)
+      }
+      if (dirty) {
+        doc.updatedAt = Date.now()
+        await this.state.storage.put('doc', doc)
+        await this.state.storage.put('seen', Date.now())
+      }
+      // A batch of only notifications gets 202 with no body, per JSON-RPC.
+      if (!replies.length) return new Response(null, { status: 202 })
+      return json(Array.isArray(body) ? replies : replies[0])
+    }
 
     if (new URL(req.url).pathname.startsWith('/room/')) {
       const seen = await this.state.storage.get<number>('seen')
@@ -267,6 +306,28 @@ export default {
         if (!/^https?:\/\//.test(target)) return json({ error: 'bad url' }, 400, headers)
         const meta = await unfurl(target)
         return json(meta, 200, { ...headers, 'cache-control': 'public, max-age=86400' })
+      }
+
+      // Classic MCP endpoint: /mcp/:board — point any MCP client here.
+      const mcp = url.pathname.match(/^\/mcp\/([a-z0-9-]{1,40})$/i)
+      if (mcp) {
+        if (!env.ROOMS) return json({ error: 'sharing not configured' }, 501, headers)
+        const mcpHeaders = {
+          ...headers,
+          'access-control-allow-headers': 'content-type, mcp-session-id, mcp-protocol-version, authorization',
+          'access-control-expose-headers': 'mcp-session-id',
+        }
+        if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: mcpHeaders })
+        // No SSE stream is offered; clients fall back to plain POST.
+        if (req.method === 'GET') return json({ error: 'this endpoint is POST-only' }, 405, mcpHeaders)
+        const obj = env.ROOMS.get(env.ROOMS.idFromName('board:' + mcp[1]))
+        const res = await obj.fetch(
+          new Request('https://do/mcp', { method: 'POST', body: req.body }),
+        )
+        return new Response(res.body, {
+          status: res.status,
+          headers: { 'content-type': 'application/json', ...mcpHeaders },
+        })
       }
 
       // Shared board document, one Durable Object per board.

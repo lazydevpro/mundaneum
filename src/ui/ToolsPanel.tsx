@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useState } from 'react'
 import { allTools, onToolsChanged, removeTool } from '../mcp/registry'
 import { removeRuntimeProvider } from '../embed/providers'
+import { serviceBase } from '../agents/config'
+import { isShared } from '../sync/sync'
 import { FILE_SUPPORT, PLATFORM_SUPPORT, type CapabilityGroup } from '../embed/capabilities'
 import { useBoard } from '../store'
 import type { WebMcpStatus } from '../mcp/webmcp'
@@ -18,6 +20,43 @@ const TRY_ASKING = [
   '"Sketch a floor-plan idea and put it near the space notes."',
   '"What does the permits cluster say?"',
 ]
+
+/**
+ * The same board over classic MCP, for clients that don't speak WebMCP —
+ * Claude Desktop, Claude Code, Codex. It needs the board shared, because the
+ * endpoint reads the shared copy rather than this tab's memory.
+ */
+function McpEndpoint() {
+  const boardId = useBoard((s) => s.boardId)
+  const [copied, setCopied] = useState(false)
+  const base = serviceBase()
+  if (base === null) return null
+  const url = (base || location.origin) + '/mcp/' + boardId
+  const shared = isShared(boardId)
+
+  return (
+    <div className="tools-caps">
+      <span className="head-line">Classic MCP endpoint</span>
+      <p className="tools-sub" style={{ marginTop: 0 }}>
+        {shared
+          ? 'Point Claude Desktop, Claude Code, or Codex at this URL and they work this same board.'
+          : 'Share this board first — the endpoint serves the shared copy, not this tab.'}
+      </p>
+      <div className="share-link">
+        <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+        <button
+          onClick={() => {
+            void navigator.clipboard?.writeText(url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1600)
+          }}
+        >
+          {copied ? 'copied' : 'copy'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CapabilitySection({ head, groups }: { head: string; groups: CapabilityGroup[] }) {
   return (
@@ -148,6 +187,8 @@ function ToolsModal({ status, close }: { status: WebMcpStatus; close: () => void
             )
           })}
         </div>
+
+        <McpEndpoint />
 
         <CapabilitySection
           head="What you can drop, paste, or link"
