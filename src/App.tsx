@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { hashFlag } from './boardId'
+import { hashFlag, watchBoardChanges } from './boardId'
 import { loadBoard, useBoard } from './store'
 import { warmEngine } from './engine/engine'
 import { reapplyExtensions, registerBoardTools } from './mcp/tools'
@@ -48,6 +48,7 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
+    watchBoardChanges(useBoard.getState().boardId)
     registerBoardTools()
     void loadBoard().then(() => {
       // Re-apply this board's agent-authored providers + tools before the

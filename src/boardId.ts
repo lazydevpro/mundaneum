@@ -22,6 +22,18 @@ export function currentBoardId(): string {
   return id
 }
 
+/**
+ * The board lives in the fragment, and changing a fragment doesn't reload —
+ * so following a link to another board, or editing the id by hand, would
+ * otherwise leave the old board running and quietly save edits into it.
+ */
+export function watchBoardChanges(currentId: string): void {
+  window.addEventListener('hashchange', () => {
+    const m = location.hash.match(/b=([a-z0-9-]+)/i)
+    if (m && m[1] !== currentId) location.reload()
+  })
+}
+
 export function boardUrl(id: string, extra?: Record<string, string>): string {
   const h = new URLSearchParams()
   h.set('b', id)
