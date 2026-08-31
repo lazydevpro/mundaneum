@@ -412,18 +412,23 @@ export const useBoard = create<BoardState>((set, get) => ({
   },
 
   saveAgentProvider(p) {
-    set({ agentProviders: [p, ...get().agentProviders.filter((x) => x.key !== p.key)] })
+    const stamped = { ...p, at: p.at ?? Date.now() }
+    set({ agentProviders: [stamped, ...get().agentProviders.filter((x) => x.key !== p.key)] })
   },
 
   saveAgentTool(def) {
-    set({ agentTools: [def, ...get().agentTools.filter((x) => x.name !== def.name)] })
+    const stamped = { ...def, at: def.at ?? Date.now() }
+    set({ agentTools: [stamped, ...get().agentTools.filter((x) => x.name !== def.name)] })
   },
 
+  // Tombstoned like everything else, so removing a platform on one device
+  // doesn't get undone by the next device that syncs still holding a copy.
   removeAgentExtension(kind, id) {
+    const deleted = { ...get().deleted, [kind + ':' + id]: Date.now() }
     if (kind === 'provider') {
-      set({ agentProviders: get().agentProviders.filter((p) => p.key !== id) })
+      set({ agentProviders: get().agentProviders.filter((p) => p.key !== id), deleted })
     } else {
-      set({ agentTools: get().agentTools.filter((t) => t.name !== id) })
+      set({ agentTools: get().agentTools.filter((t) => t.name !== id), deleted })
     }
   },
 

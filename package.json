@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc -b --noCheck && vite build",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "preview": "vite preview --port 4173",
     "worker:dev": "wrangler dev worker/index.ts",
     "worker:deploy": "wrangler deploy"
@@ -38,6 +39,7 @@
     "jszip": "^3.10.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.9",
+    "vitest": "^4.1.11",
     "wrangler": "^4.127.1"
   }
 }

@@ -1,4 +1,7 @@
-import type { Annotation, Card, LabelAssignment, Link, Stroke, ViewPrefs, XY } from '../types'
+import type {
+  AgentToolDef, Annotation, Card, LabelAssignment, Link, Stroke, ViewPrefs, XY,
+} from '../types'
+import type { RuntimeProvider } from '../embed/providers'
 
 /**
  * The shared board document and its merge rule.
@@ -27,7 +30,18 @@ export interface SyncDoc {
   strokes: Stroke[]
   annotations: Annotation[]
   prefs: ViewPrefs
-  /** id -> deletion time, so a delete beats a stale copy of the card. */
+  /**
+   * What agents taught this board: platforms it can now embed, and tools they
+   * composed. These travel because a card synced from a device that knows a
+   * platform is useless on one that doesn't — it arrives as a plain link.
+   * Optional so documents written before this existed still load.
+   */
+  agentProviders?: RuntimeProvider[]
+  agentTools?: AgentToolDef[]
+  /**
+   * id -> deletion time, so a delete beats a stale copy. Agent extensions are
+   * keyed "provider:<key>" / "tool:<name>" to share the same mechanism.
+   */
   deleted: Record<string, number>
 }
 
@@ -118,8 +132,36 @@ export function mergeDocs(a: SyncDoc, b: SyncDoc): SyncDoc {
     strokes: strokes.slice(-600),
     annotations: annotations.slice(-200),
     prefs: newer.prefs,
+    agentProviders: mergeExtensions(
+      a.agentProviders, b.agentProviders, (p) => p.key, 'provider', deleted,
+    ),
+    agentTools: mergeExtensions(
+      a.agentTools, b.agentTools, (t) => t.name, 'tool', deleted,
+    ),
     deleted: capDeleted(deleted),
   }
+}
+
+/**
+ * Agent extensions merge by key, newest teaching wins, and a tombstone beats
+ * anything taught before it — so removing a platform sticks, while teaching it
+ * again afterwards brings it back.
+ */
+function mergeExtensions<T extends { at?: number }>(
+  a: T[] | undefined,
+  b: T[] | undefined,
+  keyOf: (x: T) => string,
+  kind: string,
+  deleted: Record<string, number>,
+): T[] {
+  const best = new Map<string, T>()
+  for (const item of [...(a ?? []), ...(b ?? [])]) {
+    const key = keyOf(item)
+    if ((deleted[kind + ':' + key] ?? 0) > (item.at ?? 0)) continue
+    const held = best.get(key)
+    if (!held || (item.at ?? 0) > (held.at ?? 0)) best.set(key, item)
+  }
+  return [...best.values()]
 }
 
 /** Tombstones are forever in principle; in practice the newest 2000 suffice. */

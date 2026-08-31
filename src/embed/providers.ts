@@ -176,6 +176,8 @@ export interface RuntimeProvider {
   type: CardType
   embedTemplate?: string // {url} = encoded href, {href} = raw href, {path1} = first path segment
   needsUnfurl?: boolean
+  /** When it was taught, so sync can tell a re-add from a stale copy. */
+  at?: number
 }
 
 let runtime: RuntimeProvider[] = []

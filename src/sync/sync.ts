@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { serviceBase } from '../agents/config'
 import { useBoard } from '../store'
 import { organize } from '../engine/engine'
+import { reapplyExtensions } from '../mcp/tools'
 import { docBytes, mergeDocs, stripLocalAssets, type SyncDoc } from './doc'
 
 /**
@@ -70,6 +71,8 @@ export function localDoc(): SyncDoc {
     strokes: s.strokes,
     annotations: s.annotations,
     prefs: s.prefs,
+    agentProviders: s.agentProviders,
+    agentTools: s.agentTools,
     deleted: s.deleted,
   }
 }
@@ -88,13 +91,16 @@ export function applyDoc(doc: SyncDoc): boolean {
     labels: merged.labels,
     strokes: merged.strokes,
     annotations: merged.annotations,
-    agentProviders: s.agentProviders,
-    agentTools: s.agentTools,
+    agentProviders: merged.agentProviders ?? s.agentProviders,
+    agentTools: merged.agentTools ?? s.agentTools,
     deleted: merged.deleted,
     // View preferences are per-device taste — how I like this board to look
     // on my iPad shouldn't reach across and rearrange your desktop.
     prefs: s.prefs,
   })
+  // A platform that arrived in this merge has to reach the live provider table
+  // and tool registry too, or it sits inert in the store until a reload.
+  reapplyExtensions()
   const after = Object.keys(merged.cards).length + Object.keys(merged.links).length
   return after !== before
 }

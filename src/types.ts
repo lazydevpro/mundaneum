@@ -107,6 +107,8 @@ export interface AgentToolDef {
   inputSchema: Record<string, unknown>
   steps: AgentToolStep[]
   by: string
+  /** When it was taught, so sync can tell a re-add from a stale copy. */
+  at?: number
 }
 
 export type ThemeName = 'mint' | 'paper' | 'slate' | 'ink'
