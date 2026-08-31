@@ -21,39 +21,108 @@ const TRY_ASKING = [
   '"What does the permits cluster say?"',
 ]
 
+/** A copyable block of config — the thing you actually paste somewhere. */
+function Snippet({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="snippet">
+      {label && <span className="snippet-label">{label}</span>}
+      <pre>{text}</pre>
+      <button
+        onClick={() => {
+          void navigator.clipboard?.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1600)
+        }}
+      >
+        {copied ? 'copied' : 'copy'}
+      </button>
+    </div>
+  )
+}
+
+type ClientKind = 'claude-code' | 'codex' | 'other'
+
+const FIRST_PROMPT =
+  'You are connected to a Mundaneum research board over MCP. Call get_board first to see what is on it, ' +
+  'then help me make sense of it: group related cards with group_cards, connect ones that belong together ' +
+  'using link_cards (each with a why), and add anything obviously missing with add_cards. ' +
+  'Sign your work with your own name. You contribute meaning — the board decides where everything goes.'
+
 /**
- * The same board over classic MCP, for clients that don't speak WebMCP —
- * Claude Desktop, Claude Code, Codex. It needs the board shared, because the
- * endpoint reads the shared copy rather than this tab's memory.
+ * The same board over classic MCP, for clients that don't speak WebMCP.
+ * Shows the exact config to paste, per client, plus a first prompt — a URL
+ * on its own isn't setup instructions.
  */
 function McpEndpoint() {
   const boardId = useBoard((s) => s.boardId)
-  const [copied, setCopied] = useState(false)
+  const [client, setClient] = useState<ClientKind>('claude-code')
   const base = serviceBase()
   if (base === null) return null
   const url = (base || location.origin) + '/mcp/' + boardId
   const shared = isShared(boardId)
 
+  const config: Record<ClientKind, { label: string; where: string; text: string }> = {
+    'claude-code': {
+      label: 'Claude Code',
+      where: 'run this in your terminal',
+      text: 'claude mcp add --transport http mundaneum ' + url,
+    },
+    codex: {
+      label: 'Codex',
+      where: 'add to ~/.codex/config.toml',
+      text:
+        '[features]\nexperimental_use_rmcp_client = true\n\n' +
+        '[mcp_servers.mundaneum]\nurl = "' + url + '"',
+    },
+    other: {
+      label: 'Others',
+      where: 'Claude Desktop, Cursor, and most clients take this JSON',
+      text: JSON.stringify(
+        { mcpServers: { mundaneum: { type: 'http', url } } },
+        null,
+        2,
+      ),
+    },
+  }
+  const chosen = config[client]
+
   return (
     <div className="tools-caps">
-      <span className="head-line">Classic MCP endpoint</span>
+      <span className="head-line">Connect an agent — classic MCP</span>
       <p className="tools-sub" style={{ marginTop: 0 }}>
-        {shared
-          ? 'Point Claude Desktop, Claude Code, or Codex at this URL and they work this same board.'
-          : 'Share this board first — the endpoint serves the shared copy, not this tab.'}
+        {shared ? (
+          <>
+            Anything that speaks MCP can work this same board — Claude Code, Codex,
+            Claude Desktop — alongside the WebMCP agents in this page.
+          </>
+        ) : (
+          <>
+            <b>Share this board first.</b> The endpoint serves the shared copy, not this
+            tab, so it stays empty until you press Share above.
+          </>
+        )}
       </p>
-      <div className="share-link">
-        <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
-        <button
-          onClick={() => {
-            void navigator.clipboard?.writeText(url)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1600)
-          }}
-        >
-          {copied ? 'copied' : 'copy'}
-        </button>
+
+      <div className="client-tabs">
+        {(Object.keys(config) as ClientKind[]).map((k) => (
+          <button
+            key={k}
+            className={'client-tab' + (client === k ? ' on' : '')}
+            onClick={() => setClient(k)}
+          >
+            {config[k].label}
+          </button>
+        ))}
       </div>
+
+      <Snippet label={chosen.where} text={chosen.text} />
+      <Snippet label="then say" text={FIRST_PROMPT} />
+
+      <p className="tools-sub" style={{ marginTop: 0 }}>
+        If a client only speaks stdio, wrap it:{' '}
+        <code>npx -y mcp-remote {url}</code>
+      </p>
     </div>
   )
 }

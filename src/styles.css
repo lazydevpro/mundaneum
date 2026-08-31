@@ -1427,3 +1427,58 @@ textarea {
 .pen-grip:active { cursor: grabbing; }
 .pen-grip:hover { color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .pen-bar { user-select: none; }
+
+/* ---------- MCP setup: client tabs + copyable snippets ---------- */
+
+.client-tabs { display: flex; gap: 4px; margin: 2px 0 6px; }
+.client-tab {
+  font-size: 11px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.client-tab:hover { color: var(--ink-soft); border-color: var(--line-strong); }
+.client-tab.on { color: var(--accent); border-color: var(--accent); }
+
+.snippet { position: relative; margin-bottom: 8px; }
+.snippet-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  margin-bottom: 3px;
+}
+.snippet pre {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 58px 9px 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.snippet button {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  font-size: 10.5px;
+  color: var(--faint);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.snippet button:hover { color: var(--accent); border-color: var(--accent); }
+.tools-sub code {
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
