@@ -27,6 +27,7 @@ export type IconName =
   | 'boxempty'
   | 'erase'
   | 'code'
+  | 'grip'
 
 const STROKED: Record<string, React.ReactNode> = {
   move: (
@@ -70,6 +71,16 @@ const STROKED: Record<string, React.ReactNode> = {
 }
 
 const FILLED: Record<string, React.ReactNode> = {
+  grip: (
+    <>
+      <circle cx="6" cy="4" r="1.15" />
+      <circle cx="10" cy="4" r="1.15" />
+      <circle cx="6" cy="8" r="1.15" />
+      <circle cx="10" cy="8" r="1.15" />
+      <circle cx="6" cy="12" r="1.15" />
+      <circle cx="10" cy="12" r="1.15" />
+    </>
+  ),
   play: <path d="M5.4 3.4 12.4 8l-7 4.6Z" />,
   half: (
     <>

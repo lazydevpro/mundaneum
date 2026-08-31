@@ -1412,3 +1412,18 @@ textarea {
 .swatch[data-swatch='paper'] span { background: linear-gradient(135deg, #f2efe7 50%, #c96442 50%); }
 .swatch[data-swatch='slate'] span { background: linear-gradient(135deg, #f4f5f7 50%, #3b6fd4 50%); }
 .swatch[data-swatch='ink'] span { background: linear-gradient(135deg, #ffffff 50%, #000000 50%); }
+
+/* draggable tool rail */
+.pen-grip {
+  width: 30px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  cursor: grab;
+  touch-action: none;
+  border-radius: 5px;
+}
+.pen-grip:active { cursor: grabbing; }
+.pen-grip:hover { color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pen-bar { user-select: none; }

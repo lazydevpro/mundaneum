@@ -120,6 +120,8 @@ export interface ViewPrefs {
   arrangement: Arrangement
   /** pinned = the whiteboard feel: the tool rail is always on screen. */
   toolbar?: 'hidden' | 'pinned'
+  /** Where the rail sits, as a fraction of the viewport so it survives resizes. */
+  toolbarPos?: { x: number; y: number }
 }
 
 export type EngineStatus = 'cold' | 'warming' | 'ready' | 'embedding' | 'organizing'

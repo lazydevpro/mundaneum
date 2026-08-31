@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { create } from 'zustand'
 import type { Stroke, XY } from '../types'
 import { useBoard } from '../store'
@@ -97,7 +98,50 @@ export function PenBar() {
   const { pen, tool, setPen, setTool } = useInk()
   const pinned = useBoard((s) => s.prefs.toolbar === 'pinned')
   const strokes = useBoard((s) => s.strokes)
+  const pos = useBoard((s) => s.prefs.toolbarPos)
+  const barRef = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ dx: number; dy: number } | null>(null)
+
+  /**
+   * The rail is stored as a fraction of the viewport, not pixels, so it keeps
+   * its place when the window resizes or the board opens on another screen.
+   */
+  const onGripDown = (e: React.PointerEvent) => {
+    const bar = barRef.current
+    if (!bar) return
+    const r = bar.getBoundingClientRect()
+    drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    // No preventDefault here: it would swallow the dblclick that resets the
+    // rail. Text selection is held off by user-select on the bar instead.
+  }
+
+  const onGripMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    const bar = barRef.current
+    if (!d || !bar) return
+    const r = bar.getBoundingClientRect()
+    const x = Math.min(Math.max(0, e.clientX - d.dx), window.innerWidth - r.width)
+    const y = Math.min(Math.max(0, e.clientY - d.dy), window.innerHeight - r.height)
+    useBoard.getState().setPrefs({
+      toolbarPos: { x: x / window.innerWidth, y: y / window.innerHeight },
+    })
+  }
+
+  const onGripUp = () => {
+    drag.current = null
+  }
+
   if (!pen && !pinned) return null
+
+  const placed = pos
+    ? {
+        left: Math.round(pos.x * window.innerWidth),
+        top: Math.round(pos.y * window.innerHeight),
+        right: 'auto' as const,
+        bottom: 'auto' as const,
+      }
+    : undefined
 
   const tools: Array<[PenTool, IconName, string]> = [
     ['draw', 'pen', 'freehand'],
@@ -108,7 +152,18 @@ export function PenBar() {
     ['erase', 'erase', 'eraser — removes ink and links'],
   ]
   return (
-    <div className="chrome pen-bar">
+    <div className="chrome pen-bar" ref={barRef} style={placed}>
+      <button
+        className="pen-grip"
+        title="drag to move · double-click to reset"
+        onPointerDown={onGripDown}
+        onPointerMove={onGripMove}
+        onPointerUp={onGripUp}
+        onPointerCancel={onGripUp}
+        onDoubleClick={() => useBoard.getState().setPrefs({ toolbarPos: undefined })}
+      >
+        <Icon name="grip" size={13} />
+      </button>
       {pinned && (
         <button
           className={'pen-btn' + (!pen ? ' on' : '')}
