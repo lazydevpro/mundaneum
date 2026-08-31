@@ -87,27 +87,40 @@ export class BoardRoom {
     // read-modify-write on this board's document.
     if (new URL(req.url).pathname.startsWith('/mcp')) {
       if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
+      let body: unknown
+      try {
+        body = await req.json()
+      } catch {
+        return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
+      }
+      const batch = (Array.isArray(body) ? body : [body]) as Record<string, unknown>[]
       const doc = await this.state.storage.get<SyncDoc>('doc')
       if (!doc) {
-        return json(
-          {
+        /**
+         * The transport succeeded; the failure is a JSON-RPC one, so it goes
+         * in the body with a 200. Answering 404 makes clients report a
+         * connection error and swallow the very message that says how to fix
+         * it. Each reply carries its own request's id — the spec only allows
+         * a null id when the id couldn't be read at all.
+         */
+        const refusals = batch
+          .filter((one) => one?.id !== undefined)
+          .map((one) => ({
             jsonrpc: '2.0',
-            id: null,
+            id: one.id,
             error: {
               code: -32001,
               message:
                 'That board has not been shared yet. Open it in a browser and press Share, then connect to this URL again.',
             },
-          },
-          404,
-        )
+          }))
+        if (!refusals.length) return new Response(null, { status: 202 })
+        return json(Array.isArray(body) ? refusals : refusals[0])
       }
-      const body = (await req.json()) as Record<string, unknown>
-      const batch = Array.isArray(body) ? body : [body]
       const replies: unknown[] = []
       let dirty = false
       for (const one of batch) {
-        const { response, changed } = handleMcpRequest(one as Record<string, unknown>, doc)
+        const { response, changed } = handleMcpRequest(one, doc)
         if (changed) dirty = true
         if (response) replies.push(response)
       }
