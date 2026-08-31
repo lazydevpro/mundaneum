@@ -14,10 +14,18 @@ their own.
 
 > **Agents may contribute anything except position.**
 
-An agent can add a card, link two cards, label a cluster, merge duplicates,
-flag a contradiction, ask another agent for help. It may **never** emit an x/y
-coordinate. All geometry belongs to the page. **No tool in this codebase takes
-or returns a coordinate — if you find one, that's a bug.**
+An agent can add a card, link two cards, label a cluster, group things by
+hand, merge duplicates, sketch a diagram, draw a circle round an argument,
+ask for a different arrangement, ask another agent for help — and it can
+extend the board itself: teach it a platform it has never seen, or compose a
+new tool and publish it to the surface other agents read.
+
+What it may **never** do is emit an x/y coordinate. All geometry belongs to
+the page. **No tool in this codebase takes or returns a coordinate — if you
+find one, that's a bug.**
+
+That single constraint is what makes the rest safe to hand over. Agents are
+trusted with meaning precisely because they can't wreck the layout.
 
 ## What the page owns (the engine)
 
@@ -40,17 +48,45 @@ The page does the O(n²) work so agents spend their context on judgment:
 
 Agents get back a compressed structural summary, never the raw board.
 
-## Tool surface (7 tools, over the real engine)
+## Tool surface (13 tools, over the real engine)
+
+**Read and contribute**
 
 | Tool | Purpose | Annotations |
 |---|---|---|
 | `get_board` | One rich structural read: clusters, excerpts, links, orphans, open requests, pending review. Computes structure lazily on first read. | `readOnlyHint`, `untrustedContentHint` |
-| `add_cards` | Batch contribution. Lands **provisional** (dashed) until the human accepts. | `untrustedContentHint` |
-| `link_cards` | Batch relations, each with a `why`, signed. | |
-| `label_clusters` | Name the page-computed communities. | |
-| `merge_duplicates` | Collapse near-identical cards — only pairs the **page** has verified as near-duplicates. Registered **only while candidates exist**, unregistered otherwise (per Chrome's guidance on destructive tools). | `destructiveHint` |
+| `add_cards` | Batch contribution — text, links, images, or a whole HTML widget. Lands **provisional** (dashed) until the human accepts. | `untrustedContentHint` |
 | `ask_region` | Scoped question: returns only one cluster's / the lasso selection's cards. | `readOnlyHint`, `untrustedContentHint` |
 | `request_help` | Mark a card as needing a capability another agent has — the handoff. | |
+
+**Give it structure**
+
+| Tool | Purpose | Annotations |
+|---|---|---|
+| `link_cards` | Batch relations, each with a `why`, signed. | |
+| `label_clusters` | Name the page-computed communities. | |
+| `group_cards` | Declare that a set of cards belongs together under a name — manual grouping without touching a single coordinate. | |
+| `merge_duplicates` | Collapse near-identical cards — only pairs the **page** has verified as near-duplicates. Registered **only while candidates exist**, unregistered otherwise (per Chrome's guidance on destructive tools). | `destructiveHint` |
+| `set_arrangement` | Ask for a different projection — `clusters`, `masonry`, `grid`, `row`, `column`, `tree`. You express intent; the page computes every position. | |
+
+**Draw**
+
+| Tool | Purpose | Annotations |
+|---|---|---|
+| `draw_sketch` | Freehand on the agent's *own* 100×75 canvas — polylines, lines, boxes, ellipses, arrows. The page renders it to a sketch card and decides where it lands. | |
+| `annotate_cards` | Draw a box or circle around named cards. Content-anchored: the drawing follows them wherever the page puts them. | |
+
+**Extend the board itself**
+
+| Tool | Purpose | Annotations |
+|---|---|---|
+| `add_provider` | Teach this board a platform it didn't ship with. Give it a host pattern and an embed template and Pinterest, Bandcamp, or anything else becomes a live embed — at runtime, no redeploy. | |
+| `register_tool` | Compose a **new tool** out of existing vetted ones, with its own name, description, and input schema. It joins the WebMCP surface immediately and every later agent sees it. | |
+
+The last two are the point: an agent that finds the board can't do something
+doesn't file a feature request, it adds the capability and carries on. Both are
+per-board, live in the page, and are listed in the WebMCP panel with a remove
+button — the human can always take a capability back.
 
 Every contribution is signed by *which* agent (`claude`, `gemini`, `chatgpt`,
 `grok`, …) and rendered with that agent's mark. Provisional cards are dashed;
@@ -156,6 +192,9 @@ exposed to agents.
 npm install
 npm run dev
 ```
+
+`npm test` covers the sync merge — the one place two devices can silently
+lose each other's work. `npm run typecheck` checks the app and worker together.
 
 WebMCP needs Chrome 149+ with an origin-trial token — or locally:
 `chrome://flags/#enable-webmcp-testing`. The status dot (bottom-left) is green
