@@ -65,6 +65,12 @@ export default function App() {
         for (const c of Object.values(s.cards)) {
           if (!/^https?:\/\//.test(c.content)) continue
           const cls = classifyUrl(c.content)
+          // Re-classify only when it's an upgrade. A card synced from a device
+          // that knows a platform this one doesn't still carries a working
+          // embed; overwriting it with our "just an article" guess would
+          // quietly downgrade someone else's card.
+          const upgrade = Boolean(cls.meta.embedUrl) || !c.meta?.provider
+          if (!upgrade) continue
           s.updateCard(c.id, {
             type: c.meta?.unfurled ? c.type : cls.type,
             meta: { ...c.meta, ...cls.meta },
