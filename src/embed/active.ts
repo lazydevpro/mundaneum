@@ -7,7 +7,7 @@ import { create } from 'zustand'
  * embeddable" coexist with a 150-card canvas.
  */
 
-export const MAX_LIVE = 3
+export const MAX_LIVE = 12
 
 interface ActiveState {
   live: string[] // card ids, most recent last

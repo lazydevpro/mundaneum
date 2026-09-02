@@ -81,9 +81,11 @@ export default function App() {
           // quietly downgrade someone else's card.
           const upgrade = Boolean(cls.meta.embedUrl) || !c.meta?.provider
           if (!upgrade) continue
+          const liveType = ['video', 'audio', 'doc', 'sheet', 'model'].includes(cls.type)
           s.updateCard(c.id, {
-            type: c.meta?.unfurled ? c.type : cls.type,
+            type: cls.meta.embedUrl ? cls.type : c.meta?.unfurled ? c.type : cls.type,
             meta: { ...c.meta, ...cls.meta },
+            embedMode: cls.meta.embedUrl && liveType ? 'live' : c.embedMode,
           })
           if (!c.meta?.unfurled) enrichCard(c.id)
         }

@@ -105,7 +105,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
       return <ArticleFace card={card} onActivate={onActivate} />
     case 'sheet':
       return (
-        <button className="embed-face" onClick={() => openViewer(card)} title="open sheet">
+        <button className="embed-face" onClick={meta.embedUrl ? onActivate : () => openViewer(card)} title="open sheet">
           {meta.preview?.length ? (
             <table className="mini-table">
               <tbody>
@@ -128,7 +128,7 @@ function Face({ card, onActivate }: { card: Card; onActivate: () => void }) {
       )
     case 'doc':
       return (
-        <button className="embed-face" onClick={() => openViewer(card)} title="open document">
+        <button className="embed-face" onClick={meta.embedUrl ? onActivate : () => openViewer(card)} title="open document">
           <span className="doc-excerpt">{card.content.slice(0, 220)}</span>
           <span className="face-foot">
             <span className="host"><Icon name="lines" size={11} /> {meta.filename ?? 'document'}</span>
@@ -426,6 +426,7 @@ function ProviderFrame({
         title={card.title ?? src}
         {...(sandboxed ? { sandbox: IFRAME_SANDBOX } : {})}
         allow={IFRAME_ALLOW}
+        allowFullScreen
         referrerPolicy="strict-origin-when-cross-origin"
         loading="lazy"
         scrolling={noScroll ? 'no' : undefined}
@@ -501,7 +502,8 @@ interface ModelViewerEl extends HTMLElement {
 }
 
 function ModelFace({ card, onActivate }: { card: Card; onActivate: () => void }) {
-  const url = useAssetUrlOf(card)
+  const assetUrl = useAssetUrlOf(card)
+  const url = assetUrl ?? card.meta?.embedUrl ?? null
   const hostRef = useRef<HTMLSpanElement>(null)
   const generating = !card.poster && !!url
 
@@ -572,7 +574,8 @@ function ModelFace({ card, onActivate }: { card: Card; onActivate: () => void })
 }
 
 function ModelLive({ card }: { card: Card }) {
-  const url = useAssetUrlOf(card)
+  const assetUrl = useAssetUrlOf(card)
+  const url = assetUrl ?? card.meta?.embedUrl ?? null
   const ref = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState(false)
 

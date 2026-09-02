@@ -206,6 +206,8 @@ const VIDEO_FILE = /\.(mp4|webm|mov|m4v)(\?|$)/i
 const AUDIO_FILE = /\.(mp3|wav|ogg|m4a|flac)(\?|$)/i
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i
 const MODEL_FILE = /\.(glb|gltf)(\?|$)/i
+const PDF_FILE = /\.pdf$/i
+const SHEET_FILE = /\.(xlsx|xls)$/i
 
 export function classifyUrl(raw: string): Classified {
   let u: URL
@@ -213,6 +215,37 @@ export function classifyUrl(raw: string): Classified {
     u = new URL(raw)
   } catch {
     return { type: 'link', meta: {}, needsUnfurl: false }
+  }
+
+  // Remote documents need purpose-built viewers. The Worker relays PDFs with
+  // an inline content type; Office's viewer renders public Excel workbooks.
+  if (PDF_FILE.test(u.pathname)) {
+    return {
+      type: 'doc',
+      meta: {
+        provider: 'pdf-url',
+        site: 'PDF',
+        embedUrl: '/embed?url=' + encodeURIComponent(raw),
+        filename: u.pathname.split('/').pop() || 'document.pdf',
+      },
+      needsUnfurl: false,
+    }
+  }
+  const officeSample =
+    u.hostname === 'go.microsoft.com' &&
+    u.pathname.toLowerCase() === '/fwlink/' &&
+    u.searchParams.get('LinkID') === '521962'
+  if (SHEET_FILE.test(u.pathname) || officeSample) {
+    return {
+      type: 'sheet',
+      meta: {
+        provider: 'office-viewer',
+        site: 'Excel',
+        embedUrl: 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(raw),
+        filename: u.pathname.split('/').pop() || 'workbook.xlsx',
+      },
+      needsUnfurl: false,
+    }
   }
 
   for (const rp of runtime) {

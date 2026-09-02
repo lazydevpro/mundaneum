@@ -200,6 +200,63 @@ function json(data: unknown, status: number, headers: Record<string, string>): R
   })
 }
 
+/** Allow only ordinary public HTTPS PDF URLs; reject credentials, ports,
+ * local hostnames and literal IPs so the relay cannot become an SSRF tunnel. */
+function safePdfUrl(value: string, base: URL): URL | null {
+  let target: URL
+  try {
+    target = new URL(value, base)
+  } catch {
+    return null
+  }
+  if (target.protocol !== 'https:' || target.username || target.password || target.port) return null
+  const host = target.hostname.toLowerCase()
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return null
+  if (host.includes(':') || /^\d+(?:\.\d+){3}$/.test(host)) return null
+  if (!/\.pdf$/i.test(target.pathname)) return null
+  return target
+}
+
+async function proxyPdf(target: string, base: URL, headers: Record<string, string>): Promise<Response> {
+  let current = safePdfUrl(target, base)
+  if (!current) return json({ error: 'only public HTTPS PDF URLs are supported' }, 400, headers)
+
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    const upstream = await fetch(current, {
+      redirect: 'manual',
+      headers: {
+        accept: 'application/pdf,application/octet-stream;q=0.9,*/*;q=0.1',
+        'user-agent': 'Mozilla/5.0 (compatible; MundaneumPDF/1.0)',
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (upstream.status >= 300 && upstream.status < 400) {
+      const location = upstream.headers.get('location')
+      if (!location || redirects === 3) return json({ error: 'PDF redirect refused' }, 502, headers)
+      current = safePdfUrl(location, current)
+      if (!current) return json({ error: 'unsafe PDF redirect' }, 400, headers)
+      continue
+    }
+    const contentType = upstream.headers.get('content-type') ?? ''
+    if (!upstream.ok || !contentType.toLowerCase().includes('pdf')) {
+      return json({ error: 'upstream is not a PDF' }, 415, headers)
+    }
+    const contentLength = Number(upstream.headers.get('content-length') ?? 0)
+    if (contentLength > 50_000_000) return json({ error: 'PDF is too large' }, 413, headers)
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        ...headers,
+        'content-type': 'application/pdf',
+        'content-disposition': 'inline',
+        'cache-control': 'public, max-age=3600',
+        'x-content-type-options': 'nosniff',
+      },
+    })
+  }
+  return json({ error: 'PDF unavailable' }, 502, headers)
+}
+
 interface Ctx {
   waitUntil(p: Promise<unknown>): void
 }
@@ -255,6 +312,10 @@ export default {
           status: 200,
           headers: { 'content-type': ctype, 'cache-control': 'public, max-age=86400', ...headers },
         })
+      }
+
+      if (url.pathname === '/embed' && req.method === 'GET') {
+        return await proxyPdf(url.searchParams.get('url') ?? '', url, headers)
       }
 
       if (url.pathname === '/health' && req.method === 'GET') {

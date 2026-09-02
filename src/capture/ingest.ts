@@ -38,8 +38,11 @@ export const usePendingModels = create<PendingModelState>((set, get) => ({
 export function ingestUrl(url: string, at?: XY): void {
   const c = classifyUrl(url)
   const store = useBoard.getState()
+  const embedMode = c.meta.embedUrl && ['video', 'audio', 'doc', 'sheet', 'model'].includes(c.type)
+    ? 'live' as const
+    : undefined
   const [card] = store.addCards(
-    [{ content: url, type: c.type, meta: c.meta, at }],
+    [{ content: url, type: c.type, meta: c.meta, embedMode, at }],
     'human',
   )
   if (c.needsUnfurl) enrichCard(card.id)

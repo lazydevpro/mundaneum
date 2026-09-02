@@ -8,7 +8,9 @@ export function newId(prefix = ''): string {
 
 export function currentBoardId(): string {
   const m = location.hash.match(/b=([a-z0-9-]+)/i)
-  const id = m?.[1] ?? localStorage.getItem('mundaneum:last-board') ?? newId()
+  // A bare origin is an explicit request for a fresh board. Remembering the
+  // previous id made every new tab silently reopen the same board instead.
+  const id = m?.[1] ?? newId()
   if (!m) {
     const h = new URLSearchParams(location.hash.slice(1))
     h.set('b', id)

@@ -465,7 +465,10 @@ export function registerBoardTools(): void {
           // Agent-contributed URLs get the same rich treatment as pasted ones.
           if (/^https?:\/\/\S+$/.test(content)) {
             const c = classifyUrl(content)
-            return { ...common, content, type: c.type, meta: { ...c.meta, description } }
+            const embedMode = c.meta.embedUrl && ['video', 'audio', 'doc', 'sheet', 'model'].includes(c.type)
+              ? 'live' as const
+              : undefined
+            return { ...common, content, type: c.type, embedMode, meta: { ...c.meta, description } }
           }
           return {
             ...common,
