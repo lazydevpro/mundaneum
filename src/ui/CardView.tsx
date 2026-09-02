@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useRef, useState } from 'react'
 import type { Card, XY } from '../types'
 import { agentMark } from '../agents/identity'
 import { useBoard } from '../store'
@@ -6,6 +6,7 @@ import { EmbedBody } from '../embed/EmbedBody'
 import { cardWidth } from '../embed/dims'
 import { hasMd, MdText } from './md'
 import { Icon } from './icons'
+import { DocumentCanvasCard } from './DocumentCanvasCard'
 
 /**
  * Provenance is the visual system, legible at 480p:
@@ -29,6 +30,7 @@ export const CardView = memo(function CardView({
   dragging: boolean
   onPointerDown: (e: React.PointerEvent, id: string) => void
 }) {
+  const [copied, setCopied] = useState(false)
   const fromAgent = card.addedBy !== 'human'
   const mark = agentMark(card.addedBy)
   const cls = [
@@ -50,7 +52,9 @@ export const CardView = memo(function CardView({
       onPointerDown={(e) => onPointerDown(e, card.id)}
       title={fromAgent ? 'added by ' + mark.label + (card.accepted ? '' : ' — provisional') : undefined}
     >
-      {card.type === 'image' || card.type === 'sketch' ? (
+      {card.type === 'canvas' ? (
+        <DocumentCanvasCard card={card} />
+      ) : card.type === 'image' || card.type === 'sketch' ? (
         <>
           <img src={card.content} alt={card.title ?? card.type} draggable={false} />
           {card.title && <div className="body">{card.title}</div>}
@@ -71,6 +75,36 @@ export const CardView = memo(function CardView({
       )}
 
       {card.needs && <div className="needs">{card.needs}</div>}
+
+      {card.type === 'widget' && <WidgetResizer card={card} />}
+
+      <button
+        className="copy-card-id"
+        title={'Copy card ID: ' + card.id}
+        aria-label={'Copy card ID ' + card.id}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={async (e) => {
+          e.stopPropagation()
+          await navigator.clipboard.writeText(card.id)
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1200)
+        }}
+      >
+        {copied ? 'copied' : 'ID'}
+      </button>
+
+      <button
+        className="delete-card"
+        title={'Delete card ' + card.id}
+        aria-label={'Delete card ' + (card.title ?? card.id)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          useBoard.getState().removeCard(card.id)
+        }}
+      >
+        <Icon name="x" size={11} />
+      </button>
 
       {fromAgent && (
         <span className="mark" style={{ background: mark.color }} aria-hidden>
@@ -94,3 +128,47 @@ export const CardView = memo(function CardView({
     </div>
   )
 })
+
+function WidgetResizer({ card }: { card: Card }) {
+  const start = useRef<{
+    pointerId: number
+    x: number
+    y: number
+    width: number
+    height: number
+    scale: number
+  } | null>(null)
+  return (
+    <button
+      className="widget-resize"
+      aria-label={'Resize widget ' + (card.title ?? card.id)}
+      title="Drag to resize"
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        const cardEl = e.currentTarget.closest('[data-card]') as HTMLElement | null
+        const logicalWidth = card.displaySize?.width ?? 320
+        start.current = {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          width: logicalWidth,
+          height: card.displaySize?.height ?? 360,
+          scale: (cardEl?.getBoundingClientRect().width ?? logicalWidth) / logicalWidth,
+        }
+      }}
+      onPointerMove={(e) => {
+        const s = start.current
+        if (!s || s.pointerId !== e.pointerId) return
+        useBoard.getState().updateCard(card.id, {
+          displaySize: {
+            width: Math.max(260, Math.min(900, s.width + (e.clientX - s.x) / s.scale)),
+            height: Math.max(220, Math.min(700, s.height + (e.clientY - s.y) / s.scale)),
+          },
+        })
+      }}
+      onPointerUp={() => { start.current = null }}
+      onPointerCancel={() => { start.current = null }}
+    />
+  )
+}

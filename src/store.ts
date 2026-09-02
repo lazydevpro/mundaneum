@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type {
-  AgentToolDef, Annotation, Card, CardMeta, CardType, Cluster, EngineStatus,
+  AgentToolDef, Annotation, CanvasDocument, Card, CardMeta, CardType, Cluster, EngineStatus,
   LabelAssignment, Link, ProvenanceFilter, Stroke, ViewPrefs, XY,
 } from './types'
 import type { RuntimeProvider } from './embed/providers'
 import { deleteAsset } from './capture/assets'
 import { currentBoardId, newId } from './boardId'
+import { findOpenPosition } from './placement'
 
 export interface AgentActivity {
   id: string
@@ -46,6 +47,7 @@ interface BoardState {
       meta?: CardMeta
       embedMode?: 'face' | 'live'
       needs?: string
+      document?: CanvasDocument
       forCard?: string
       at?: XY
     }>,
@@ -73,6 +75,7 @@ interface BoardState {
   replaceBoard(data: Persisted): void
   removeLink(id: string): void
   addStroke(s: Omit<Stroke, 'id'>): void
+  updateStroke(id: string, patch: Partial<Omit<Stroke, 'id'>>): void
   undoStroke(): void
   removeStrokes(ids: string[]): void
   moveStrokes(ids: string[], dx: number, dy: number): void
@@ -114,7 +117,6 @@ export const dropTarget: { current: () => XY } = {
 }
 
 let seq = 0
-const jitter = (r: number) => (Math.random() - 0.5) * 2 * r
 
 export const useBoard = create<BoardState>((set, get) => ({
   boardId: currentBoardId(),
@@ -156,10 +158,11 @@ export const useBoard = create<BoardState>((set, get) => ({
         addedAt: Date.now() + seq++,
         accepted: by === 'human',
         needs: it.needs,
+        document: it.document,
       }
       cards[id] = card
       const base = it.at ?? dropTarget.current()
-      positions[id] = { x: base.x + jitter(140), y: base.y + jitter(100) }
+      positions[id] = findOpenPosition(card, base, cards, positions)
       created.push(card)
       if (it.forCard && cards[it.forCard]) {
         // Serving a handoff: link the contribution and close the request.
@@ -360,6 +363,10 @@ export const useBoard = create<BoardState>((set, get) => ({
 
   addStroke(stroke) {
     set({ strokes: [...get().strokes, { ...stroke, id: newId('s') }] })
+  },
+
+  updateStroke(id, patch) {
+    set({ strokes: get().strokes.map((stroke) => stroke.id === id ? { ...stroke, ...patch } : stroke) })
   },
 
   undoStroke() {

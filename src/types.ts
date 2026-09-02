@@ -9,6 +9,7 @@ export type CardType =
   | 'model' // 3D file (glb/gltf)
   | 'sheet' // csv/xlsx
   | 'doc' // docx/rtf-ish
+  | 'canvas' // one editable document: typed text + handwritten ink
   | 'widget' // agent-authored HTML plugin, sandboxed
   | 'file' // anything else
 
@@ -28,6 +29,40 @@ export interface CardMeta {
   remote?: boolean
 }
 
+/** One drawing object stored inside a document card. */
+export interface DocumentStroke {
+  id: string
+  /** Optional for backward compatibility; old document ink is freehand. */
+  kind?: Stroke['kind']
+  points: XY[]
+}
+
+export interface DocumentText {
+  id: string
+  text: string
+  x: number
+  y: number
+  fontSize?: number
+  bold?: boolean
+  italic?: boolean
+  color?: string
+}
+
+export interface CanvasDocument {
+  text: string
+  strokes: DocumentStroke[]
+  /** Freely positioned plain-text objects; unlike legacy `text`, these can overlap ink. */
+  textItems?: DocumentText[]
+  /** Display size on the board. */
+  width?: number
+  height?: number
+  /** Local drawing space. It expands with the document instead of stretching ink. */
+  canvasWidth?: number
+  canvasHeight?: number
+  /** Cached raster of the whole document for native multimodal MCP results. */
+  snapshot?: string
+}
+
 export interface Card {
   id: string
   type: CardType
@@ -45,6 +80,10 @@ export interface Card {
   needs?: string // open handoff request ("transcribe this video")
   servedBy?: string // agent that fulfilled the request
   mergedInto?: string // tombstone left by merge_duplicates
+  /** Present only for canvas cards; text and ink travel/sync as one entity. */
+  document?: CanvasDocument
+  /** User-chosen viewport for resizable interactive cards such as widgets. */
+  displaySize?: { width: number; height: number }
 }
 
 export interface Link {
@@ -79,11 +118,13 @@ export interface XY {
   y: number
 }
 
-/** On-canvas ink: freehand and shapes. Pure geometry — never exposed to agents. */
+/** On-canvas drawing objects: ink, shapes, and lightweight positioned text. */
 export interface Stroke {
   id: string
-  kind: 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow'
-  points: XY[] // draw: polyline; line/rect/ellipse: [start, end]
+  kind: 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow' | 'text'
+  points: XY[] // text: [top-left]; draw: polyline; line/rect/ellipse: [start, end]
+  text?: string
+  fontSize?: number
 }
 
 /** Content-anchored agent drawing: the page computes where it lands. */

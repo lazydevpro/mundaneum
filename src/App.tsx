@@ -54,6 +54,15 @@ export default function App() {
       // Re-apply this board's agent-authored providers + tools before the
       // WebMCP surface is published, so they appear on it too.
       reapplyExtensions()
+      // Widgets created before live intent was persisted should still restore
+      // as interactive cards after a refresh. Closing one explicitly changes
+      // its mode to "face" and therefore remains respected on later loads.
+      {
+        const s = useBoard.getState()
+        for (const c of Object.values(s.cards)) {
+          if (c.type === 'widget' && !c.embedMode) s.updateCard(c.id, { embedMode: 'live' })
+        }
+      }
       // Tools registered in the top-level page, after state exists.
       setWebmcp(startWebMcp())
       maybeLoadRelay()

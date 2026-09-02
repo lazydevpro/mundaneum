@@ -28,7 +28,9 @@ export function arrangePositions(
   const positions: Record<string, XY> = {}
 
   if (mode === 'masonry') {
-    const colW = 320 + GUT
+    // Keep every column wide enough for the largest card (documents and live
+    // widgets are wider than the old 320px assumption).
+    const colW = Math.max(320, ...dims.map((d) => d.w)) + GUT
     const sumH = dims.reduce((a, d) => a + d.h + GUT, 0)
     const cols = Math.max(2, Math.min(10, Math.round(Math.sqrt((1.7 * sumH) / colW))))
     const heights = new Array<number>(cols).fill(0)
@@ -44,13 +46,35 @@ export function arrangePositions(
   }
 
   if (mode === 'grid') {
-    const cell = 320 + GUT
-    const rowH = 280
     const cols = Math.max(2, Math.ceil(Math.sqrt(ordered.length * 1.5)))
+    // Grid cells must follow the real card footprint. A fixed row height made
+    // live widgets (and tall document canvases) overlap the next row.
+    const colWidths = new Array<number>(cols).fill(0)
+    const rowHeights = new Array<number>(Math.ceil(ordered.length / cols)).fill(0)
+    ordered.forEach((_c, i) => {
+      const d = dims[i]
+      colWidths[i % cols] = Math.max(colWidths[i % cols], d.w)
+      rowHeights[Math.floor(i / cols)] = Math.max(rowHeights[Math.floor(i / cols)], d.h)
+    })
+    const colX: number[] = []
+    const rowY: number[] = []
+    let x = 0
+    for (const width of colWidths) {
+      colX.push(x)
+      x += width + GUT
+    }
+    let y = 0
+    for (const height of rowHeights) {
+      rowY.push(y)
+      y += height + GUT
+    }
     ordered.forEach((c, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
       positions[c.id] = {
-        x: (i % cols) * cell,
-        y: Math.floor(i / cols) * rowH,
+        // Cards are center-anchored by the canvas, so store cell centers.
+        x: colX[col] + colWidths[col] / 2,
+        y: rowY[row] + rowHeights[row] / 2,
       }
     })
     return center(positions)
@@ -111,13 +135,22 @@ function treeLayout(cards: Card[], links: Link[]): Record<string, XY> {
 
   // Order children under their parents: sort each layer by mean parent x.
   const positions: Record<string, XY> = {}
-  const ROW_H = 320
   const parentsOf = new Map<string, string[]>()
   for (const l of dLinks) {
     if (!parentsOf.has(l.to)) parentsOf.set(l.to, [])
     parentsOf.get(l.to)!.push(l.from)
   }
   const orderedDepths = [...layers.keys()].sort((a, b) => a - b)
+  const depthHeights = new Map<number, number>()
+  for (const depth of orderedDepths) {
+    depthHeights.set(depth, Math.max(...(layers.get(depth) ?? []).map((id) => cardDims(byId.get(id)!).h), 0) + GUT)
+  }
+  const depthY = new Map<number, number>()
+  let depthOffset = 0
+  for (const depth of orderedDepths) {
+    depthY.set(depth, depthOffset)
+    depthOffset += depthHeights.get(depth) ?? GUT
+  }
   for (const d of orderedDepths) {
     const layer = layers.get(d)!
     if (d > 0) {
@@ -131,7 +164,7 @@ function treeLayout(cards: Card[], links: Link[]): Record<string, XY> {
     const total = widths.reduce((a2, w) => a2 + w + GUT, -GUT)
     let x = -total / 2
     layer.forEach((id, i) => {
-      positions[id] = { x: x + widths[i] / 2, y: d * ROW_H }
+      positions[id] = { x: x + widths[i] / 2, y: (depthY.get(d) ?? 0) + (cardDims(byId.get(id)!).h / 2) }
       x += widths[i] + GUT
     })
   }
@@ -139,14 +172,20 @@ function treeLayout(cards: Card[], links: Link[]): Record<string, XY> {
   // The rest: a loose grid well below the tree.
   const loose = cards.filter((c) => !inTree.has(c.id))
   if (loose.length) {
-    const maxDepth = Math.max(0, ...depth.values())
-    const cell = 320 + GUT
+    const looseDims = loose.map((c) => cardDims(c))
+    const cell = Math.max(320, ...looseDims.map((d) => d.w)) + GUT
     const cols = Math.max(2, Math.ceil(Math.sqrt(loose.length * 1.5)))
-    const y0 = (maxDepth + 1) * ROW_H + 260
+    const y0 = depthOffset + 260
+    const looseRows = Math.ceil(loose.length / cols)
+    const looseRowHeights = new Array<number>(looseRows).fill(0)
+    looseDims.forEach((d, i) => { looseRowHeights[Math.floor(i / cols)] = Math.max(looseRowHeights[Math.floor(i / cols)], d.h) })
     loose.forEach((c, i) => {
+      const row = Math.floor(i / cols)
+      let rowY = y0
+      for (let r = 0; r < row; r++) rowY += looseRowHeights[r] + GUT
       positions[c.id] = {
         x: ((i % cols) - (cols - 1) / 2) * cell,
-        y: y0 + Math.floor(i / cols) * 280,
+        y: rowY + looseDims[i].h / 2,
       }
     })
   }

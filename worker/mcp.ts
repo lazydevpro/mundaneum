@@ -1,4 +1,6 @@
 import type { SyncDoc } from '../src/sync/doc'
+import type { CanvasDocument } from '../src/types'
+import { documentImageContent } from '../src/docCanvas'
 
 /**
  * Classic MCP over Streamable HTTP, so anything that speaks MCP — Claude
@@ -39,6 +41,19 @@ export const MCP_TOOLS = [
       properties: {
         group: { type: 'string', description: 'Optional: full detail for one named group.' },
       },
+    },
+  },
+  {
+    name: 'get_canvas_document',
+    title: 'View a canvas document',
+    description:
+      'Return one document canvas as a native image so a vision-capable agent can read all typed text, handwriting, equations, arrows, and spatial relationships together.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card_id: { type: 'string', description: 'The copied id of a canvas document card.' },
+      },
+      required: ['card_id'],
     },
   },
   {
@@ -289,7 +304,7 @@ export function callBoardTool(
   doc: SyncDoc,
   name: string,
   args: Json,
-): { text: string; changed: boolean } {
+): { text: string; changed: boolean; content?: Array<Record<string, unknown>> } {
   const agent = clean(args.agent, 24).toLowerCase().replace(/[^a-z0-9 _.-]/g, '') || 'agent'
   const now = Date.now()
   // The document is written loosely here so the worker doesn't need the
@@ -349,6 +364,27 @@ export function callBoardTool(
             .filter((c) => c.needs)
             .map((c) => ({ card: c.id, needs: c.needs, excerpt: excerpt(c as never) })),
         }),
+        changed: false,
+      }
+    }
+
+    case 'get_canvas_document': {
+      const id = clean(args.card_id, 60)
+      const card = cards[id]
+      if (!card || card.type !== 'canvas') {
+        return { text: JSON.stringify({ error: 'not a canvas document: ' + id }), changed: false }
+      }
+      const document = (card.document as CanvasDocument | undefined) ?? {
+        text: String(card.content ?? ''),
+        strokes: [],
+      }
+      const image = documentImageContent(document)
+      return {
+        text: JSON.stringify({ id, title: card.title ?? null, typed_text: document.text }),
+        content: [
+          { type: 'text', text: JSON.stringify({ id, title: card.title ?? null, typed_text: document.text }) },
+          { type: 'image', ...image },
+        ],
         changed: false,
       }
     }
@@ -580,9 +616,9 @@ export function handleMcpRequest(
       if (!MCP_TOOLS.some((t) => t.name === name)) {
         return { response: fail(-32602, 'Unknown tool: ' + name), changed: false }
       }
-      const { text, changed } = callBoardTool(doc, name, (params?.arguments as Json) ?? {})
+      const { text, changed, content } = callBoardTool(doc, name, (params?.arguments as Json) ?? {})
       return {
-        response: ok({ content: [{ type: 'text', text }], isError: text.includes('"error"') }),
+        response: ok({ content: content ?? [{ type: 'text', text }], isError: text.includes('"error"') }),
         changed,
       }
     }

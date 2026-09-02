@@ -19,6 +19,8 @@ interface Editing {
   at: XY
   cardId?: string
   initial?: string
+  plain?: boolean
+  strokeId?: string
 }
 
 export function Canvas() {
@@ -56,6 +58,8 @@ export function Canvas() {
     start: XY
     startView?: View
     cardStart?: XY
+    additive?: boolean
+    wasSelected?: boolean
     moved: boolean
   }>({ mode: null, start: { x: 0, y: 0 }, moved: false })
 
@@ -63,6 +67,15 @@ export function Canvas() {
   const hitStroke = (p: XY): string | null => {
     const r = 12 / viewRef.current.k
     for (const s of [...useBoard.getState().strokes].reverse()) {
+      if (s.kind === 'text' && s.points[0]) {
+        const size = s.fontSize ?? 18
+        const lines = (s.text ?? '').split('\n')
+        const width = Math.max(1, ...lines.map((line) => line.length)) * size * 0.62
+        const height = Math.max(1, lines.length) * size * 1.3
+        if (p.x >= s.points[0].x - r && p.x <= s.points[0].x + width + r &&
+            p.y >= s.points[0].y - r && p.y <= s.points[0].y + height + r) return s.id
+        continue
+      }
       const pts =
         s.kind === 'rect' || s.kind === 'ellipse'
           ? rectOutline(s.points[0], s.points[s.points.length - 1])
@@ -198,6 +211,7 @@ export function Canvas() {
   }
 
   const startInk = (e: React.PointerEvent) => {
+    if (useInk.getState().tool === 'text' || useInk.getState().tool === 'select') return
     capture(e)
     const p = toWorld(e.clientX, e.clientY)
     gesture.current = { mode: 'ink', start: p, moved: false }
@@ -208,11 +222,25 @@ export function Canvas() {
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     const target = e.target as HTMLElement | null
-    if (target?.closest?.('.note-editor')) return
+    if (target?.closest?.('.note-editor, .canvas-text-editor')) return
+    // A document owns pen gestures while it is the active drawing container.
+    if (useInk.getState().documentId) return
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (beginPinchIfTwo()) return
+    const inkUi = useInk.getState()
+    if (inkUi.pen && inkUi.tool === 'text') {
+      // Text placement is a one-click editor gesture, not a pan/ink gesture.
+      // Clear any previous pointer state so the following pointer-up cannot
+      // finish an older gesture and dismiss the newly opened editor.
+      gesture.current = { mode: null, start: { x: 0, y: 0 }, moved: false }
+      setPanning(false)
+      setLasso(null)
+      setEditing({ at: toWorld(e.clientX, e.clientY), plain: true })
+      useInk.getState().setPen(false)
+      return
+    }
     // Apple Pencil draws even outside pen mode; fingers navigate.
-    if (pen || e.pointerType === 'pen') {
+    if ((pen || e.pointerType === 'pen') && !['text', 'select'].includes(useInk.getState().tool)) {
       startInk(e)
       return
     }
@@ -224,14 +252,17 @@ export function Canvas() {
     if (hit) {
       capture(e)
       const sel = useBoard.getState().strokeSelection
-      const moving = sel.includes(hit) ? sel : [hit]
-      if (!sel.includes(hit)) useBoard.getState().setStrokeSelection(moving)
+      const wasSelected = sel.includes(hit)
+      const moving = wasSelected ? sel : (e.shiftKey ? [...sel, hit] : [hit])
+      if (!wasSelected) useBoard.getState().setStrokeSelection(moving)
       gesture.current = {
         mode: 'stroke',
         id: hit,
         strokeIds: moving,
         start: { x: e.clientX, y: e.clientY },
         last: world,
+        additive: e.shiftKey,
+        wasSelected,
         moved: false,
       }
       return
@@ -268,6 +299,7 @@ export function Canvas() {
       id,
       start: { x: e.clientX, y: e.clientY },
       cardStart: { ...p },
+      additive: e.shiftKey,
       moved: false,
     }
   }
@@ -344,6 +376,14 @@ export function Canvas() {
     const r = 14 / viewRef.current.k
     const deadStrokes = st.strokes
       .filter((stroke) => {
+        if (stroke.kind === 'text' && stroke.points[0]) {
+          const size = stroke.fontSize ?? 18
+          const lines = (stroke.text ?? '').split('\n')
+          const width = Math.max(1, ...lines.map((line) => line.length)) * size * 0.62
+          const height = Math.max(1, lines.length) * size * 1.3
+          return p.x >= stroke.points[0].x - r && p.x <= stroke.points[0].x + width + r &&
+            p.y >= stroke.points[0].y - r && p.y <= stroke.points[0].y + height + r
+        }
         const pts =
           stroke.kind === 'rect' || stroke.kind === 'ellipse'
             ? rectOutline(stroke.points[0], stroke.points[stroke.points.length - 1])
@@ -427,7 +467,9 @@ export function Canvas() {
           }
         }
         if (inked) {
-          useBoard.getState().addStroke({ kind: currentInk.kind, points: currentInk.points })
+          if (currentInk.kind !== 'text' && currentInk.kind !== 'select') {
+            useBoard.getState().addStroke({ kind: currentInk.kind, points: currentInk.points })
+          }
         }
       }
       setCurrentInk(null)
@@ -435,9 +477,13 @@ export function Canvas() {
       // A click without a drag toggles that drawing's selection.
       if (!g.moved && g.id) {
         const sel = useBoard.getState().strokeSelection
-        useBoard.getState().setStrokeSelection(
-          sel.length === 1 && sel[0] === g.id ? [] : [g.id],
-        )
+        if (g.additive) {
+          // An unselected shift-click was already added on pointer-down so it
+          // can immediately take part in a group drag. A selected one toggles off.
+          if (g.wasSelected) useBoard.getState().setStrokeSelection(sel.filter((id) => id !== g.id))
+        } else {
+          useBoard.getState().setStrokeSelection(sel.length === 1 && sel[0] === g.id ? [] : [g.id])
+        }
       }
     } else if (g.mode === 'lasso' && lasso && lasso.length > 2) {
       useBoard.getState().setSelection(spatial.searchPolygon(lasso))
@@ -449,7 +495,13 @@ export function Canvas() {
       )
     } else if (g.mode === 'card' && g.id && !g.moved) {
       const sel = useBoard.getState().selection
-      useBoard.getState().setSelection(sel.includes(g.id) ? [] : [g.id])
+      if (g.additive) {
+        useBoard.getState().setSelection(
+          sel.includes(g.id) ? sel.filter((id) => id !== g.id) : [...sel, g.id],
+        )
+      } else {
+        useBoard.getState().setSelection(sel.length === 1 && sel[0] === g.id ? [] : [g.id])
+      }
     } else if (g.mode === 'pan' && !g.moved) {
       useBoard.getState().setSelection([])
     }
@@ -462,14 +514,32 @@ export function Canvas() {
   useEffect(() => {
     const onNewNote = () =>
       setEditing({ at: toWorld(window.innerWidth / 2, window.innerHeight / 2 - 60) })
+    const onNewCanvasDocument = () => {
+      const s = useBoard.getState()
+      const [card] = s.addCards(
+        [{
+          type: 'canvas',
+          title: 'Document canvas',
+          content: '',
+          document: { text: '', strokes: [], width: 360, height: 270, canvasWidth: 342, canvasHeight: 270 },
+          at: toWorld(window.innerWidth / 2, window.innerHeight / 2 - 60),
+        }],
+        'human',
+      )
+      s.setSelection([card.id])
+    }
     window.addEventListener('mundaneum:new-note', onNewNote)
-    return () => window.removeEventListener('mundaneum:new-note', onNewNote)
+    window.addEventListener('mundaneum:new-canvas-document', onNewCanvasDocument)
+    return () => {
+      window.removeEventListener('mundaneum:new-note', onNewNote)
+      window.removeEventListener('mundaneum:new-canvas-document', onNewCanvasDocument)
+    }
   }, [toWorld])
 
   const onDoubleClick = (e: React.MouseEvent) => {
     if (pen) return
     const target = e.target as HTMLElement | null
-    if (target?.closest?.('.note-editor')) return
+    if (target?.closest?.('.note-editor, .canvas-text-editor')) return
     const cardEl = target?.closest?.('[data-card]') as HTMLElement | null
     if (cardEl) {
       // Double-click a text card: edit it in place.
@@ -481,7 +551,14 @@ export function Canvas() {
       }
       return
     }
-    setEditing({ at: toWorld(e.clientX, e.clientY) })
+    const at = toWorld(e.clientX, e.clientY)
+    const strokeId = hitStroke(at)
+    const stroke = strokeId ? useBoard.getState().strokes.find((candidate) => candidate.id === strokeId) : undefined
+    if (stroke?.kind === 'text') {
+      setEditing({ at: stroke.points[0], initial: stroke.text ?? '', plain: true, strokeId: strokeId ?? undefined })
+      return
+    }
+    setEditing({ at })
   }
 
   // ---- drag & drop files onto the canvas ----
@@ -645,28 +722,34 @@ export function Canvas() {
 
         <InkLayer current={currentInk} />
 
-        {editing && (
-          <NoteEditor
-            at={editing.at}
-            initial={editing.initial}
-            onDone={(text) => {
-              const s = useBoard.getState()
-              if (editing.cardId) {
-                if (!text.trim()) s.removeCard(editing.cardId)
-                else if (text.trim() !== editing.initial) {
-                  s.updateCard(editing.cardId, { content: text })
-                  // Typed a bare URL into a note? It should become a link
-                  // card with a preview, exactly as pasting one does.
-                  reclassifyIfUrl(editing.cardId, text.trim())
-                }
+        {editing && (() => {
+          const finish = (text: string) => {
+            const s = useBoard.getState()
+            if (editing.plain) {
+              if (editing.strokeId) {
+                if (text.trim()) s.updateStroke(editing.strokeId, { text })
+                else s.removeStrokes([editing.strokeId])
               } else if (text.trim()) {
-                // Same path as paste and drop, so a typed URL unfurls too.
-                ingestText(text.trim(), editing.at)
+                s.addStroke({ kind: 'text', points: [{ ...editing.at }], text, fontSize: 18 })
               }
-              setEditing(null)
-            }}
-          />
-        )}
+            } else if (editing.cardId) {
+              if (!text.trim()) s.removeCard(editing.cardId)
+              else if (text.trim() !== editing.initial) {
+                s.updateCard(editing.cardId, { content: text })
+                // Typed a bare URL into a note? It should become a link
+                // card with a preview, exactly as pasting one does.
+                reclassifyIfUrl(editing.cardId, text.trim())
+              }
+            } else if (text.trim()) {
+              // Same path as paste and drop, so a typed URL unfurls too.
+              ingestText(text.trim(), editing.at)
+            }
+            setEditing(null)
+          }
+          return editing.plain
+            ? <CanvasTextEditor at={editing.at} initial={editing.initial} onDone={finish} />
+            : <NoteEditor at={editing.at} initial={editing.initial} onDone={finish} />
+        })()}
 
         {lasso && lasso.length > 1 && (
           <svg className="lasso" width="1" height="1">
@@ -721,6 +804,56 @@ function pointInPolygon(p: XY, poly: XY[]): boolean {
   return inside
 }
 
+function CanvasTextEditor({
+  at,
+  initial,
+  onDone,
+}: {
+  at: XY
+  initial?: string
+  onDone: (text: string) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const focusReady = useRef(false)
+  useEffect(() => {
+    // Focus after the placement click has completely finished. Otherwise the
+    // browser's final click-focus step can immediately blur and close a new,
+    // still-empty editor.
+    const frame = window.requestAnimationFrame(() => {
+      ref.current?.focus()
+      if (initial) ref.current?.setSelectionRange(initial.length, initial.length)
+      focusReady.current = true
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [initial])
+
+  return (
+    <div className="canvas-text-editor" style={{ left: at.x, top: at.y }}>
+      <textarea
+        ref={ref}
+        defaultValue={initial}
+        rows={1}
+        placeholder="Type…"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            onDone((e.target as HTMLTextAreaElement).value)
+          }
+          if (e.key === 'Escape') onDone(initial ?? '')
+        }}
+        onBlur={(e) => {
+          const value = e.currentTarget.value
+          if (value.trim() && focusReady.current) return onDone(value)
+          window.setTimeout(() => {
+            const editor = ref.current
+            if (editor && !editor.value.trim() && document.activeElement !== editor) onDone('')
+          }, 350)
+        }}
+      />
+    </div>
+  )
+}
+
 function NoteEditor({
   at,
   initial,
@@ -731,59 +864,56 @@ function NoteEditor({
   onDone: (text: string) => void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const focusReady = useRef(false)
   useEffect(() => {
-    ref.current?.focus()
-    if (initial) ref.current?.setSelectionRange(initial.length, initial.length)
+    const frame = window.requestAnimationFrame(() => {
+      ref.current?.focus()
+      if (initial) ref.current?.setSelectionRange(initial.length, initial.length)
+      focusReady.current = true
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [initial])
 
-  /**
-   * Formatting writes markdown rather than hidden rich-text state: the card
-   * already renders it, agents can read and write it, and it survives sync
-   * as plain text. The toolbar is the rich editor; markdown is the format.
-   */
-  // Clicking a toolbar button can move the caret before the handler runs, so
-  // the last real selection is remembered and used instead of reading it back.
+  // Notes intentionally keep their markdown-backed rich formatting. Canvas
+  // text uses CanvasTextEditor above and never enters this code path.
   const sel = useRef({ start: 0, end: 0 })
   const remember = () => {
-    const ta = ref.current
-    if (ta) sel.current = { start: ta.selectionStart, end: ta.selectionEnd }
+    const textarea = ref.current
+    if (textarea) sel.current = { start: textarea.selectionStart, end: textarea.selectionEnd }
   }
-
   const wrap = (before: string, after = before) => {
-    const ta = ref.current
-    if (!ta) return
+    const textarea = ref.current
+    if (!textarea) return
     const { start, end } = sel.current
-    const picked = ta.value.slice(start, end) || 'text'
-    ta.setRangeText(before + picked + after, start, end)
+    const picked = textarea.value.slice(start, end) || 'text'
+    textarea.setRangeText(before + picked + after, start, end)
     const from = start + before.length
-    ta.focus()
-    ta.setSelectionRange(from, from + picked.length)
+    textarea.focus()
+    textarea.setSelectionRange(from, from + picked.length)
     remember()
   }
-
   const linePrefix = (prefix: string) => {
-    const ta = ref.current
-    if (!ta) return
+    const textarea = ref.current
+    if (!textarea) return
     const { start } = sel.current
-    const lineStart = ta.value.lastIndexOf('\n', start - 1) + 1
-    const existing = ta.value.slice(lineStart).match(/^(#{1,3} |- \[[ x]\] |- )/)
+    const lineStart = textarea.value.lastIndexOf('\n', start - 1) + 1
+    const existing = textarea.value.slice(lineStart).match(/^(#{1,3} |- \[[ x]\] |- )/)
     let caret = start
     if (existing) {
-      ta.setRangeText('', lineStart, lineStart + existing[0].length)
+      textarea.setRangeText('', lineStart, lineStart + existing[0].length)
       caret -= existing[0].length
       if (existing[0] === prefix) {
-        ta.focus()
-        ta.setSelectionRange(caret, caret)
+        textarea.focus()
+        textarea.setSelectionRange(caret, caret)
         remember()
         return
       }
     }
-    ta.setRangeText(prefix, lineStart, lineStart)
-    ta.focus()
-    ta.setSelectionRange(caret + prefix.length, caret + prefix.length)
+    textarea.setRangeText(prefix, lineStart, lineStart)
+    textarea.focus()
+    textarea.setSelectionRange(caret + prefix.length, caret + prefix.length)
     remember()
   }
-
   const tools: Array<[string, string, () => void]> = [
     ['B', 'bold', () => wrap('**')],
     ['I', 'italic', () => wrap('*')],
@@ -797,10 +927,8 @@ function NoteEditor({
   return (
     <div className="note-editor" style={{ left: at.x, top: at.y }}>
       <div className="note-tools" onPointerDown={(e) => e.preventDefault()}>
-        {tools.map(([label, title, fn]) => (
-          <button key={title} title={title} onClick={fn}>
-            {label}
-          </button>
+        {tools.map(([label, title, action]) => (
+          <button key={title} title={title} onClick={action}>{label}</button>
         ))}
       </div>
       <textarea
@@ -824,11 +952,18 @@ function NoteEditor({
           }
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
-            onDone((e.target as HTMLTextAreaElement).value)
+            onDone(e.currentTarget.value)
           }
           if (e.key === 'Escape') onDone(initial ?? '')
         }}
-        onBlur={(e) => onDone(e.target.value)}
+        onBlur={(e) => {
+          const value = e.currentTarget.value
+          if (value.trim() && focusReady.current) return onDone(value)
+          window.setTimeout(() => {
+            const editor = ref.current
+            if (editor && !editor.value.trim() && document.activeElement !== editor) onDone('')
+          }, 350)
+        }}
       />
     </div>
   )

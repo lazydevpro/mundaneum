@@ -79,7 +79,9 @@ export function runLayout(
     .force('charge', forceManyBody().strength(-30).distanceMax(260))
     .force(
       'collide',
-      forceCollide<LayoutNode>((d) => (d.w + d.h) / 4 + 22).iterations(3),
+      // A circle enclosing each rectangle guarantees the actual card boxes
+      // cannot overlap, including tall documents and live widgets.
+      forceCollide<LayoutNode>((d) => Math.hypot(d.w, d.h) / 2 + 22).iterations(5),
     )
     .force(
       'link',

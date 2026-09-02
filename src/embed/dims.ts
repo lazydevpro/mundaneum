@@ -16,6 +16,10 @@ export function cardWidth(card: Card): number {
       return 280
     case 'file':
       return 224
+    case 'canvas':
+      return card.document?.width ?? 360
+    case 'widget':
+      return card.displaySize?.width ?? 320
     default:
       return 320 // link, video, social, sheet, doc, model
   }
@@ -37,7 +41,7 @@ export function liveHeight(card: Card): number {
     case 'model':
       return 240
     case 'widget':
-      return 360
+      return card.displaySize?.height ?? 360
     default:
       return 380 // live article/figma/maps iframe
   }
@@ -64,10 +68,12 @@ export function cardDims(card: Card): { w: number; h: number } {
       return { w, h: 170 }
     case 'doc':
       return { w, h: 150 }
+    case 'canvas':
+      return { w, h: (card.document?.height ?? 270) + 70 }
     case 'model':
       return { w, h: 230 }
     case 'widget':
-      return { w, h: 140 }
+      return { w, h: card.displaySize ? card.displaySize.height + 30 : 140 }
     case 'file':
       return { w, h: 70 }
     default: {

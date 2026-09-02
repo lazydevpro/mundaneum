@@ -48,13 +48,14 @@ The page does the O(n²) work so agents spend their context on judgment:
 
 Agents get back a compressed structural summary, never the raw board.
 
-## Tool surface (13 tools, over the real engine)
+## Tool surface (14 tools, over the real engine)
 
 **Read and contribute**
 
 | Tool | Purpose | Annotations |
 |---|---|---|
-| `get_board` | One rich structural read: clusters, excerpts, links, orphans, open requests, pending review. Computes structure lazily on first read. | `readOnlyHint`, `untrustedContentHint` |
+| `get_board` | One rich structural read: selected cards first (including native images for selected document canvases), then clusters, excerpts, links, orphans, open requests, and pending review. | `readOnlyHint`, `untrustedContentHint` |
+| `get_canvas_document` | Return an expandable document canvas as one native image so vision models read typed text, handwriting, shapes, equations, and layout together. Documents reuse the board pen, shape, arrow, eraser, and undo tools. | `readOnlyHint`, `untrustedContentHint` |
 | `add_cards` | Batch contribution — text, links, images, or a whole HTML widget. Lands **provisional** (dashed) until the human accepts. | `untrustedContentHint` |
 | `ask_region` | Scoped question: returns only one cluster's / the lasso selection's cards. | `readOnlyHint`, `untrustedContentHint` |
 | `request_help` | Mark a card as needing a capability another agent has — the handoff. | |
@@ -124,7 +125,7 @@ standing by to serve handoffs.
   session, no SSE) and runs *inside* the board's Durable Object, which is
   single-threaded, so each tool call is an atomic read-modify-write.
 
-  Nine of the tools live there: `get_board`, `add_cards`, `link_cards`,
+  Ten of the tools live there: `get_board`, `get_canvas_document`, `add_cards`, `link_cards`,
   `group_cards`, `ask_region`, `annotate_cards`, `draw_sketch`,
   `set_arrangement`, `request_help`. The ones that need the page's engine —
   clustering by embedding, near-duplicate detection — are deliberately
@@ -136,10 +137,13 @@ standing by to serve handoffs.
 ## Capture — anything is a card
 
 Paste anything (text, URLs, images — big text dumps split into cards).
-Drop any file. Double-click to write in place. **+** button: note, file,
+Drop any file. Double-click to write in place. **+** button: note, document
+canvas (typed text and handwriting kept as one agent-readable card), file,
 sketch (pointer canvas), phone camera (QR opens the board's capture page; a
 tiny 5-minute mail-slot on the worker hops photos to the big screen — not a
 sync backend). Board id in the URL hash, state in IndexedDB. No accounts.
+Every new card first tries the intended landing point, then searches outward
+for the nearest empty footprint, including the dimensions of resized cards.
 
 **Links** classify through a provider registry (`src/embed/providers.ts` — one
 table, deliberately the seam a future plugin system would attach to):
@@ -185,6 +189,15 @@ interactive `- [ ]` task lists (click to toggle). Double-click a note to
 edit it in place. A pen mode (+ menu → draw) inks freehand strokes, lines,
 boxes, and ovals straight onto the canvas; ink is pure geometry and is never
 exposed to agents.
+
+Click a card to focus it; Shift-click adds or removes cards from that focus
+set. `get_board` returns the selected cards first with full content so agents
+scope work to them on large boards. Every card also exposes a small **ID**
+button on hover/selection for copying its exact id into a prompt. Document
+canvas ink is exposed as a visual snapshot (suited to handwriting and math),
+while its typed layer remains searchable text.
+Document canvases and interactive widget cards have a bottom-right resize
+handle; their chosen viewport dimensions persist with the card.
 
 ## Run it
 

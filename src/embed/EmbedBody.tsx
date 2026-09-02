@@ -38,6 +38,12 @@ export function EmbedBody({ card }: { card: Card }) {
   const live = useActive((s) => s.live.includes(card.id))
   const activate = useActive((s) => s.activate)
   const deactivate = useActive((s) => s.deactivate)
+  const activateCard = () => {
+    // Live is an intent, not just an in-memory runtime slot. Persist it so a
+    // refresh restores an interactive widget instead of falling back to its face.
+    if (card.embedMode !== 'live') useBoard.getState().updateCard(card.id, { embedMode: 'live' })
+    activate(card.id)
+  }
 
   // "live" persists as intent on the card (3D chosen interactive); the
   // runtime cap still decides whether it is actually running right now.
@@ -59,7 +65,7 @@ export function EmbedBody({ card }: { card: Card }) {
       />
     )
   }
-  return <Face card={card} onActivate={() => activate(card.id)} />
+  return <Face card={card} onActivate={activateCard} />
 }
 
 // ---------------------------------------------------------------- faces

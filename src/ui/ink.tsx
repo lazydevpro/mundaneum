@@ -11,24 +11,40 @@ import { Icon, type IconName } from './icons'
  * With prefs.toolbar = 'pinned', the rail stays on screen (whiteboard feel).
  */
 
-export type PenTool = 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow' | 'erase'
+export type PenTool = 'select' | 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow' | 'text' | 'erase'
 
 interface InkUi {
   pen: boolean
   tool: PenTool
+  documentId: string | null
   setPen(on: boolean): void
   setTool(t: PenTool): void
+  setDocument(id: string | null): void
 }
 
 export const useInk = create<InkUi>((set) => ({
   pen: false,
   tool: 'draw',
-  setPen: (pen) => set({ pen }),
+  documentId: null,
+  setPen: (pen) => set(pen ? { pen } : { pen, documentId: null }),
   setTool: (tool) => set({ tool }),
+  setDocument: (documentId) => set({ documentId, pen: documentId ? true : false }),
 }))
 
-export function strokePath(s: Pick<Stroke, 'kind' | 'points'>) {
+export function strokePath(s: Pick<Stroke, 'kind' | 'points' | 'text' | 'fontSize'>) {
   const pts = s.points
+  if (s.kind === 'text') {
+    const at = pts[0]
+    if (!at || !s.text) return null
+    const size = s.fontSize ?? 18
+    return (
+      <text x={at.x} y={at.y + size} fontSize={size}>
+        {s.text.split('\n').map((line, index) => (
+          <tspan key={index} x={at.x} dy={index ? size * 1.3 : 0}>{line || ' '}</tspan>
+        ))}
+      </text>
+    )
+  }
   if (pts.length < 2) return null
   const a = pts[0]
   const b = pts[pts.length - 1]
@@ -80,7 +96,9 @@ export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] }
   const selected = useBoard((s) => s.strokeSelection)
   const pen = useInk((s) => s.pen)
   // the eraser leaves no trail of its own
-  const live = current && current.kind !== 'erase' ? (current as Pick<Stroke, 'kind' | 'points'>) : null
+  const live = current && current.kind !== 'erase' && current.kind !== 'text' && current.kind !== 'select'
+    ? (current as Pick<Stroke, 'kind' | 'points'>)
+    : null
   if (!strokes.length && !live) return null
   return (
     <svg className={'ink' + (pen ? '' : ' grabbable')} width="1" height="1">
@@ -95,9 +113,10 @@ export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] }
 }
 
 export function PenBar() {
-  const { pen, tool, setPen, setTool } = useInk()
+  const { pen, tool, documentId, setPen, setTool } = useInk()
   const pinned = useBoard((s) => s.prefs.toolbar === 'pinned')
   const strokes = useBoard((s) => s.strokes)
+  const target = useBoard((s) => documentId ? s.cards[documentId] : undefined)
   const pos = useBoard((s) => s.prefs.toolbarPos)
   const barRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ dx: number; dy: number } | null>(null)
@@ -144,11 +163,13 @@ export function PenBar() {
     : undefined
 
   const tools: Array<[PenTool, IconName, string]> = [
+    ...(documentId ? [['select', 'move', 'select and move document drawings'] as [PenTool, IconName, string]] : []),
     ['draw', 'pen', 'freehand'],
     ['line', 'line', 'line'],
     ['rect', 'box', 'box'],
     ['ellipse', 'oval', 'oval'],
     ['arrow', 'arrow', 'arrow — card to card makes a link'],
+    ['text', 'text', documentId ? 'place text in the active document' : 'place a text note on the board'],
     ['erase', 'erase', 'eraser — removes ink and links'],
   ]
   return (
@@ -164,7 +185,7 @@ export function PenBar() {
       >
         <Icon name="grip" size={13} />
       </button>
-      {pinned && (
+      {pinned && !documentId && (
         <button
           className={'pen-btn' + (!pen ? ' on' : '')}
           title="move & select"
@@ -173,11 +194,12 @@ export function PenBar() {
           <Icon name="move" />
         </button>
       )}
+      {documentId && <span className="pen-target" title={target?.title}>document</span>}
       {tools.map(([t, glyph, label]) => (
         <button
           key={t}
           className={'pen-btn' + (pen && tool === t ? ' on' : '')}
-          title={label}
+          title={documentId && t === 'arrow' ? 'arrow inside document' : documentId && t === 'erase' ? 'erase document drawing' : label}
           onClick={() => {
             setTool(t)
             setPen(true)
@@ -190,8 +212,16 @@ export function PenBar() {
       <button
         className="pen-btn"
         title="undo stroke"
-        disabled={!strokes.length}
-        onClick={() => useBoard.getState().undoStroke()}
+        disabled={documentId ? !target?.document?.strokes.length : !strokes.length}
+        onClick={() => {
+          if (!documentId) return useBoard.getState().undoStroke()
+          const card = useBoard.getState().cards[documentId]
+          const document = card?.document
+          if (!document?.strokes.length) return
+          useBoard.getState().updateCard(documentId, {
+            document: { ...document, strokes: document.strokes.slice(0, -1) },
+          })
+        }}
       >
         <Icon name="undo" />
       </button>

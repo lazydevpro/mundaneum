@@ -9,6 +9,7 @@
 :root {
   --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
   --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --hand: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
 }
 
 /* ---------- mint (default) ---------- */
@@ -333,7 +334,246 @@ textarea {
 }
 .review button:hover { border-color: var(--accent); color: var(--accent); }
 
-/* inline note editor */
+/* Small, universal card handle for quickly naming a card to an agent. */
+.copy-card-id {
+  position: absolute;
+  top: -9px;
+  left: 8px;
+  z-index: 5;
+  min-width: 25px;
+  height: 19px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--faint);
+  font: 600 9px/1 ui-monospace, monospace;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+.card:hover .copy-card-id, .card.selected .copy-card-id { opacity: 1; }
+.copy-card-id:hover { color: var(--accent); border-color: var(--accent); }
+.delete-card {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  z-index: 5;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--faint);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+.card:hover .delete-card, .card.selected .delete-card { opacity: 1; }
+.delete-card:hover { color: #c54848; border-color: #c54848; }
+
+/* One document entity with two editable layers: searchable text + visual ink. */
+.card.type-canvas {
+  padding: 8px;
+  background: var(--card);
+}
+.document-canvas-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.document-canvas-head > input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 600 12px/1.3 var(--sans);
+}
+.document-canvas-tools { display: flex; gap: 2px; }
+.document-canvas-tools button {
+  width: 23px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--faint);
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+}
+.document-canvas-tools button:hover,
+.document-canvas-tools button.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.document-canvas-tools button:disabled { opacity: 0.3; }
+.document-paper {
+  position: relative;
+  width: 100%;
+  height: 270px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(transparent 0 23px, color-mix(in srgb, var(--line) 55%, transparent) 24px),
+    color-mix(in srgb, var(--paper) 45%, var(--card));
+  touch-action: none;
+}
+.document-paper textarea,
+.document-paper svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.document-paper textarea {
+  z-index: 1;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--ink);
+  font: 13px/24px var(--hand);
+}
+.document-paper .document-floating-text {
+  z-index: 3;
+  inset: auto;
+  field-sizing: content;
+  width: auto;
+  min-width: 2ch;
+  max-width: 420px;
+  min-height: 1.3em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--hand);
+  line-height: 1.25;
+  pointer-events: auto;
+  resize: none;
+}
+.document-floating-text-wrap {
+  position: absolute;
+  z-index: 3;
+  width: max-content;
+  max-width: 420px;
+  pointer-events: auto;
+}
+.document-paper .document-floating-text:focus {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 3px;
+}
+.document-paper.mode-draw .document-floating-text,
+.document-paper.mode-select .document-floating-text { pointer-events: auto; }
+.document-paper svg {
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+.document-paper svg path,
+.document-paper svg rect,
+.document-paper svg ellipse,
+.document-paper svg line,
+.document-paper svg polyline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.document-paper svg .live { opacity: 0.72; }
+.document-paper svg .picked path,
+.document-paper svg .picked rect,
+.document-paper svg .picked ellipse {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 7 4;
+}
+.document-paper.mode-draw { cursor: crosshair; }
+.document-paper.mode-select { cursor: grab; }
+.document-paper.mode-select:active { cursor: grabbing; }
+.document-paper.mode-draw textarea { pointer-events: none; }
+.document-paper.mode-select > textarea { pointer-events: none; }
+.document-paper.mode-draw svg { pointer-events: auto; }
+.document-paper.mode-select svg { pointer-events: auto; }
+.document-paper.mode-select svg [data-document-stroke] { pointer-events: stroke; }
+.pen-target {
+  position: absolute;
+  top: -23px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 72px;
+  padding: 3px 6px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font: 600 9px/1 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 6;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.45;
+  background:
+    linear-gradient(135deg, transparent 47%, var(--faint) 48% 54%, transparent 55%),
+    linear-gradient(135deg, transparent 64%, var(--faint) 65% 71%, transparent 72%);
+}
+.document-resize:hover { opacity: 1; }
+.widget-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 8;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.45;
+  background:
+    linear-gradient(135deg, transparent 47%, var(--faint) 48% 54%, transparent 55%),
+    linear-gradient(135deg, transparent 64%, var(--faint) 65% 71%, transparent 72%);
+}
+.widget-resize:hover { opacity: 1; }
+
+/* lightweight Draw → Text input (separate from rich note cards) */
+.canvas-text-editor {
+  position: absolute;
+  transform: none;
+  width: max-content;
+  max-width: 480px;
+  z-index: 40;
+}
+.canvas-text-editor textarea {
+  field-sizing: content;
+  width: auto;
+  min-width: 3ch;
+  max-width: 480px;
+  min-height: 1.35em;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--ink);
+  font: 18px/1.3 var(--hand);
+  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 4px;
+}
+
+/* Rich note-card editor. Keep its original type scale and formatting UI. */
 .note-editor {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -1063,6 +1303,12 @@ textarea {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.ink text {
+  fill: var(--accent);
+  font-family: var(--hand);
+  font-weight: 400;
+  stroke: none;
+}
 .ink .live path, .ink .live rect, .ink .live ellipse { opacity: 0.7; }
 .board.penning { cursor: crosshair; }
 
@@ -1422,8 +1668,12 @@ textarea {
   stroke-width: 3.4;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
 }
+.ink .picked text {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+}
 
-/* ---------- note editor formatting bar ---------- */
+/* ---------- rich note editor formatting bar ---------- */
 
 .note-tools {
   display: flex;

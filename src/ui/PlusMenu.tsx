@@ -23,6 +23,7 @@ interface Item {
 
 const ITEMS: Item[] = [
   { key: 'note', label: 'note', hint: 'or double-click', always: true },
+  { key: 'canvas-doc', label: 'document canvas', hint: 'text + handwriting' },
   { key: 'file', label: 'file', hint: 'or drop it' },
   { key: 'draw', label: 'draw', hint: 'ink + shapes' },
   { key: 'phone', label: 'phone camera' },
@@ -30,9 +31,9 @@ const ITEMS: Item[] = [
 ]
 
 const STACKS: Record<string, string[]> = {
-  everything: ['note', 'file', 'draw', 'phone', 'organize'],
-  researcher: ['note', 'file', 'phone', 'organize'],
-  whiteboard: ['note', 'draw', 'organize'],
+  everything: ['note', 'canvas-doc', 'file', 'draw', 'phone', 'organize'],
+  researcher: ['note', 'canvas-doc', 'file', 'phone', 'organize'],
+  whiteboard: ['note', 'canvas-doc', 'draw', 'organize'],
 }
 
 function loadStack(): string[] {
@@ -77,10 +78,14 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
       case 'note':
         window.dispatchEvent(new CustomEvent('mundaneum:new-note'))
         return
+      case 'canvas-doc':
+        window.dispatchEvent(new CustomEvent('mundaneum:new-canvas-document'))
+        return
       case 'file':
         fileRef.current?.click()
         return
       case 'draw':
+        useInk.getState().setDocument(null)
         useInk.getState().setPen(true)
         return
       case 'phone':
