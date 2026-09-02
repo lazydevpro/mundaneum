@@ -191,6 +191,7 @@ textarea {
   position: fixed;
   inset: 0;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
   background-image: radial-gradient(var(--dot) 1px, transparent 1px);
   background-size: 26px 26px;
   cursor: default;
@@ -421,6 +422,8 @@ textarea {
     repeating-linear-gradient(transparent 0 23px, color-mix(in srgb, var(--line) 55%, transparent) 24px),
     color-mix(in srgb, var(--paper) 45%, var(--card));
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
 }
 .document-paper textarea,
 .document-paper svg {

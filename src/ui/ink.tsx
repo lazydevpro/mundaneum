@@ -15,20 +15,26 @@ export type PenTool = 'select' | 'draw' | 'line' | 'rect' | 'ellipse' | 'arrow' 
 
 interface InkUi {
   pen: boolean
+  penMode: boolean
   tool: PenTool
   documentId: string | null
   setPen(on: boolean): void
+  setPenMode(on: boolean): void
   setTool(t: PenTool): void
   setDocument(id: string | null): void
 }
 
 export const useInk = create<InkUi>((set) => ({
   pen: false,
+  penMode: false,
   tool: 'draw',
   documentId: null,
-  setPen: (pen) => set(pen ? { pen } : { pen, documentId: null }),
+  setPen: (pen) => set(pen ? { pen } : { pen, penMode: false, documentId: null }),
+  setPenMode: (penMode) => set({ penMode }),
   setTool: (tool) => set({ tool }),
-  setDocument: (documentId) => set({ documentId, pen: documentId ? true : false }),
+  setDocument: (documentId) => set(documentId
+    ? { documentId, pen: true }
+    : { documentId: null, pen: false, penMode: false }),
 }))
 
 export function strokePath(s: Pick<Stroke, 'kind' | 'points' | 'text' | 'fontSize'>) {
@@ -50,6 +56,18 @@ export function strokePath(s: Pick<Stroke, 'kind' | 'points' | 'text' | 'fontSiz
   const b = pts[pts.length - 1]
   switch (s.kind) {
     case 'draw':
+      if (pts.some((p) => p.pressure !== undefined)) {
+        return (
+          <>
+            {pts.slice(1).map((p, index) => {
+              const previous = pts[index]
+              const pressure = Math.max(0, Math.min(1, p.pressure ?? previous.pressure ?? 0.5))
+              return <path key={index} d={`M ${previous.x} ${previous.y} L ${p.x} ${p.y}`}
+                style={{ strokeWidth: 1.1 + pressure * 3.1 }} />
+            })}
+          </>
+        )
+      }
       return <path d={'M ' + pts.map((p) => p.x + ' ' + p.y).join(' L ')} />
     case 'line':
       return <path d={'M ' + a.x + ' ' + a.y + ' L ' + b.x + ' ' + b.y} />
@@ -94,7 +112,7 @@ export function strokePath(s: Pick<Stroke, 'kind' | 'points' | 'text' | 'fontSiz
 export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] } | null }) {
   const strokes = useBoard((s) => s.strokes)
   const selected = useBoard((s) => s.strokeSelection)
-  const pen = useInk((s) => s.pen)
+  const pen = useInk((s) => s.pen || s.penMode)
   // the eraser leaves no trail of its own
   const live = current && current.kind !== 'erase' && current.kind !== 'text' && current.kind !== 'select'
     ? (current as Pick<Stroke, 'kind' | 'points'>)
@@ -113,7 +131,7 @@ export function InkLayer({ current }: { current: { kind: PenTool; points: XY[] }
 }
 
 export function PenBar() {
-  const { pen, tool, documentId, setPen, setTool } = useInk()
+  const { pen, penMode, tool, documentId, setPen, setPenMode, setTool } = useInk()
   const pinned = useBoard((s) => s.prefs.toolbar === 'pinned')
   const strokes = useBoard((s) => s.strokes)
   const target = useBoard((s) => documentId ? s.cards[documentId] : undefined)
@@ -151,7 +169,7 @@ export function PenBar() {
     drag.current = null
   }
 
-  if (!pen && !pinned) return null
+  if (!pen && !pinned && !penMode) return null
 
   const placed = pos
     ? {
@@ -185,7 +203,7 @@ export function PenBar() {
       >
         <Icon name="grip" size={13} />
       </button>
-      {pinned && !documentId && (
+      {pinned && !documentId && !penMode && (
         <button
           className={'pen-btn' + (!pen ? ' on' : '')}
           title="move & select"
@@ -194,11 +212,16 @@ export function PenBar() {
           <Icon name="move" />
         </button>
       )}
+      {penMode && (
+        <button className="pen-btn" aria-label="Exit stylus mode and use touch" title="exit stylus mode and use touch" onClick={() => { setPenMode(false); setPen(false) }}>
+          <Icon name="move" />
+        </button>
+      )}
       {documentId && <span className="pen-target" title={target?.title}>document</span>}
       {tools.map(([t, glyph, label]) => (
         <button
           key={t}
-          className={'pen-btn' + (pen && tool === t ? ' on' : '')}
+          className={'pen-btn' + ((pen || penMode) && tool === t ? ' on' : '')}
           title={documentId && t === 'arrow' ? 'arrow inside document' : documentId && t === 'erase' ? 'erase document drawing' : label}
           onClick={() => {
             setTool(t)
@@ -226,7 +249,7 @@ export function PenBar() {
         <Icon name="undo" />
       </button>
       {!pinned && (
-        <button className="pen-btn done" title="done (Esc)" onClick={() => setPen(false)}>
+        <button className="pen-btn done" title="done (Esc)" onClick={() => { setPen(false); setPenMode(false) }}>
           <Icon name="check" />
         </button>
       )}

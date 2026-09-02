@@ -8,6 +8,7 @@ import { classifyUrl } from '../embed/providers'
 import { enrichCard } from '../embed/unfurl'
 import { CardView } from './CardView'
 import { InkLayer, useInk, type PenTool } from './ink'
+import { isDirectDisplayPen, pointerSamples } from './pointer'
 
 interface View {
   x: number
@@ -38,6 +39,7 @@ export function Canvas() {
   const style = useBoard((s) => s.prefs.style)
   const arrangement = useBoard((s) => s.prefs.arrangement)
   const pen = useInk((s) => s.pen)
+  const penMode = useInk((s) => s.penMode)
 
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 })
   const viewRef = useRef(view)
@@ -53,6 +55,8 @@ export function Canvas() {
   const gesture = useRef<{
     mode: 'pan' | 'card' | 'lasso' | 'ink' | 'pinch' | 'stroke' | null
     id?: string
+    pointerId?: number
+    inkTool?: PenTool
     strokeIds?: string[]
     last?: XY
     start: XY
@@ -121,7 +125,10 @@ export function Canvas() {
   // Esc leaves pen mode.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') useInk.getState().setPen(false)
+      if (e.key === 'Escape') {
+        useInk.getState().setPen(false)
+        useInk.getState().setPenMode(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -210,24 +217,59 @@ export function Canvas() {
     }
   }
 
-  const startInk = (e: React.PointerEvent) => {
-    if (useInk.getState().tool === 'text' || useInk.getState().tool === 'select') return
+  const release = (e: React.PointerEvent) => {
+    try {
+      if (boardRef.current?.hasPointerCapture(e.pointerId)) boardRef.current.releasePointerCapture(e.pointerId)
+    } catch {
+      /* WebKit can implicitly release capture before pointerup/cancel arrives. */
+    }
+  }
+
+  const interruptGesture = () => {
+    pointers.current.clear()
+    pinch0.current = null
+    gesture.current = { mode: null, start: { x: 0, y: 0 }, moved: false }
+    setCurrentInk(null)
+    setLasso(null)
+    setPanning(false)
+    setDraggingCard(null)
+  }
+
+  const startInk = (e: React.PointerEvent, requestedTool = useInk.getState().tool) => {
+    if (requestedTool === 'text' || requestedTool === 'select') return
     capture(e)
-    const p = toWorld(e.clientX, e.clientY)
-    gesture.current = { mode: 'ink', start: p, moved: false }
-    setCurrentInk({ kind: useInk.getState().tool, points: [p] })
+    const p = {
+      ...toWorld(e.clientX, e.clientY),
+      ...(e.pointerType === 'pen' ? { pressure: e.pressure } : {}),
+    }
+    gesture.current = { mode: 'ink', pointerId: e.pointerId, inkTool: requestedTool, start: p, moved: false }
+    setCurrentInk({ kind: requestedTool, points: [p] })
   }
 
   // ---- pointer gestures ----
   const onBackgroundDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return
+    const hardwareEraser = e.pointerType === 'pen' && e.button === 5
+    if (e.button !== 0 && !hardwareEraser) return
     const target = e.target as HTMLElement | null
     if (target?.closest?.('.note-editor, .canvas-text-editor')) return
     // A document owns pen gestures while it is the active drawing container.
     if (useInk.getState().documentId) return
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (beginPinchIfTwo()) return
     const inkUi = useInk.getState()
+    if (isDirectDisplayPen(e.nativeEvent)) {
+      // Match tldraw: a direct-display stylus interrupts any palm gesture
+      // before its own stroke begins, then canvas touches are rejected.
+      interruptGesture()
+      inkUi.setPenMode(true)
+      if (e.cancelable) e.preventDefault()
+    } else if (inkUi.penMode && e.pointerType !== 'pen') {
+      return
+    }
+    // Only fingers participate in pinch state. A pen must never become one
+    // half of a pen+palm pinch gesture.
+    if (e.pointerType === 'touch') {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (beginPinchIfTwo()) return
+    }
     if (inkUi.pen && inkUi.tool === 'text') {
       // Text placement is a one-click editor gesture, not a pan/ink gesture.
       // Clear any previous pointer state so the following pointer-up cannot
@@ -239,9 +281,9 @@ export function Canvas() {
       useInk.getState().setPen(false)
       return
     }
-    // Apple Pencil draws even outside pen mode; fingers navigate.
-    if ((pen || e.pointerType === 'pen') && !['text', 'select'].includes(useInk.getState().tool)) {
-      startInk(e)
+    // A direct-display stylus draws even outside manual draw mode; fingers navigate.
+    if ((pen || e.pointerType === 'pen') && (hardwareEraser || !['text', 'select'].includes(useInk.getState().tool))) {
+      startInk(e, hardwareEraser ? 'erase' : useInk.getState().tool)
       return
     }
     if (target?.closest?.('[data-card]')) return
@@ -258,6 +300,7 @@ export function Canvas() {
       gesture.current = {
         mode: 'stroke',
         id: hit,
+        pointerId: e.pointerId,
         strokeIds: moving,
         start: { x: e.clientX, y: e.clientY },
         last: world,
@@ -271,11 +314,12 @@ export function Canvas() {
     capture(e)
     if (e.shiftKey) {
       const p = toWorld(e.clientX, e.clientY)
-      gesture.current = { mode: 'lasso', start: p, moved: false }
+      gesture.current = { mode: 'lasso', pointerId: e.pointerId, start: p, moved: false }
       setLasso([p])
     } else {
       gesture.current = {
         mode: 'pan',
+        pointerId: e.pointerId,
         start: { x: e.clientX, y: e.clientY },
         startView: { ...viewRef.current },
         moved: false,
@@ -286,6 +330,7 @@ export function Canvas() {
 
   const onCardDown = (e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return
+    if (useInk.getState().penMode && e.pointerType !== 'pen') return
     if (pen || e.pointerType === 'pen') return // ink flows over cards; the board handler catches it
     if (pointers.current.size >= 1) {
       // second finger landing on a card: let it reach the board for pinch
@@ -297,6 +342,7 @@ export function Canvas() {
     gesture.current = {
       mode: 'card',
       id,
+      pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
       cardStart: { ...p },
       additive: e.shiftKey,
@@ -305,11 +351,14 @@ export function Canvas() {
   }
 
   const onMove = (e: React.PointerEvent) => {
+    if (useInk.getState().penMode && e.pointerType !== 'pen') return
     if (pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     }
     const g = gesture.current
     if (!g.mode) return
+    if (g.mode !== 'pinch' && g.pointerId !== undefined && g.pointerId !== e.pointerId) return
+    if (e.pointerType === 'pen' && e.cancelable) e.preventDefault()
 
     if (g.mode === 'pinch') {
       const p0 = pinch0.current
@@ -343,16 +392,22 @@ export function Canvas() {
       const p = toWorld(e.clientX, e.clientY)
       setLasso((prev) => (prev ? [...prev, p] : [p]))
     } else if (g.mode === 'ink') {
-      const p = toWorld(e.clientX, e.clientY)
-      if (currentInk?.kind === 'erase') {
-        eraseAt(p)
+      const samples = pointerSamples(e.nativeEvent)
+      if (g.inkTool === 'erase') {
+        for (const sample of samples) eraseAt(toWorld(sample.clientX, sample.clientY))
         return
       }
+      const points = samples.map((sample) => ({
+        ...toWorld(sample.clientX, sample.clientY),
+        ...(e.pointerType === 'pen' ? { pressure: sample.pressure ?? e.pressure } : {}),
+      }))
       setCurrentInk((cur) =>
         cur
           ? {
               ...cur,
-              points: cur.kind === 'draw' ? [...cur.points, p] : [cur.points[0], p],
+              points: cur.kind === 'draw'
+                ? [...cur.points, ...points]
+                : [cur.points[0], points[points.length - 1]],
             }
           : cur,
       )
@@ -439,7 +494,13 @@ export function Canvas() {
   }
 
   const onUp = (e?: React.PointerEvent) => {
-    if (e) pointers.current.delete(e.pointerId)
+    if (e) {
+      pointers.current.delete(e.pointerId)
+      if (useInk.getState().penMode && e.pointerType !== 'pen') return
+      if (gesture.current.mode !== 'pinch' && gesture.current.pointerId !== undefined && gesture.current.pointerId !== e.pointerId) return
+      if (e.pointerType === 'pen' && e.cancelable) e.preventDefault()
+      release(e)
+    }
     const g = gesture.current
     if (g.mode === 'pinch') {
       if (pointers.current.size < 2) {
@@ -510,6 +571,19 @@ export function Canvas() {
     setLasso(null)
     setDraggingCard(null)
   }
+  const onCancel = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId)
+    release(e)
+    // Cancelled input never commits ink. Clear all transient interaction state
+    // so the next stylus contact cannot inherit a stale touch or pinch.
+    if (gesture.current.mode === 'pinch' || gesture.current.pointerId === e.pointerId) interruptGesture()
+  }
+
+  useEffect(() => {
+    const interruptForDocumentStylus = () => interruptGesture()
+    window.addEventListener('mundaneum:stylus-start', interruptForDocumentStylus)
+    return () => window.removeEventListener('mundaneum:stylus-start', interruptForDocumentStylus)
+  }, [])
 
   useEffect(() => {
     const onNewNote = () =>
@@ -581,12 +655,12 @@ export function Canvas() {
     <div
       ref={boardRef}
       className={
-        'board style-' + style + (panning ? ' panning' : '') + (pen ? ' penning' : '')
+        'board style-' + style + (panning ? ' panning' : '') + ((pen || penMode) ? ' penning' : '')
       }
       onPointerDown={onBackgroundDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
-      onPointerCancel={onUp}
+      onPointerCancel={onCancel}
       onDoubleClick={onDoubleClick}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
@@ -881,6 +955,7 @@ function NoteEditor({
     const textarea = ref.current
     if (textarea) sel.current = { start: textarea.selectionStart, end: textarea.selectionEnd }
   }
+
   const wrap = (before: string, after = before) => {
     const textarea = ref.current
     if (!textarea) return

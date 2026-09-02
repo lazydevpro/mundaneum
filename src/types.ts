@@ -116,6 +116,8 @@ export interface LabelAssignment {
 export interface XY {
   x: number
   y: number
+  /** Normalized stylus pressure, when supplied by Pointer Events. */
+  pressure?: number
 }
 
 /** On-canvas drawing objects: ink, shapes, and lightweight positioned text. */

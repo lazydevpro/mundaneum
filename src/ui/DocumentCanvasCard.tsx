@@ -3,6 +3,7 @@ import type { Card, DocumentStroke, DocumentText, XY } from '../types'
 import { useBoard } from '../store'
 import { renderDocumentPng } from '../docCanvas'
 import { strokePath, useInk, type PenTool } from './ink'
+import { isDirectDisplayPen, pointerSamples } from './pointer'
 
 const distanceToSegment = (p: XY, a: XY, b: XY): number => {
   const dx = b.x - a.x
@@ -42,6 +43,8 @@ export function DocumentCanvasCard({ card }: { card: Card }) {
     ids: string[]
     original: Map<string, XY[]>
   } | null>(null)
+  const activePointer = useRef<number | null>(null)
+  const pointerTool = useRef<PenTool | null>(null)
   const resizing = useRef<{ pointerId: number; x: number; y: number; width: number; height: number; scale: number } | null>(null)
   const pen = useInk((s) => s.pen)
   const tool = useInk((s) => s.tool)
@@ -103,11 +106,12 @@ export function DocumentCanvasCard({ card }: { card: Card }) {
     setEditingText(item.id)
   }
 
-  const point = (e: React.PointerEvent): XY => {
+  const point = (e: { clientX: number; clientY: number; pressure?: number }, includePressure = false): XY => {
     const r = paper.current!.getBoundingClientRect()
     return {
       x: Math.max(0, Math.min(canvasWidth, ((e.clientX - r.left) / r.width) * canvasWidth)),
       y: Math.max(0, Math.min(canvasHeight, ((e.clientY - r.top) / r.height) * canvasHeight)),
+      ...(includePressure ? { pressure: e.pressure ?? 0.5 } : {}),
     }
   }
 
@@ -190,12 +194,26 @@ export function DocumentCanvasCard({ card }: { card: Card }) {
         style={{ height: doc.height ?? 270 }}
         onPointerDown={(e) => {
           const pencil = e.pointerType === 'pen'
+          if (isDirectDisplayPen(e.nativeEvent)) {
+            // Discard a palm interaction already in progress before the pen
+            // takes ownership of this document, as tldraw does on tablets.
+            moving.current = null
+            activePointer.current = null
+            setActive(null)
+            useInk.getState().setPenMode(true)
+            window.dispatchEvent(new Event('mundaneum:stylus-start'))
+            if (e.cancelable) e.preventDefault()
+          } else if (useInk.getState().penMode && !pencil) {
+            return
+          }
           if (pencil && !drawingHere) activateDrawing()
           if (!drawingHere && !pencil) return
           e.stopPropagation()
-          paper.current?.setPointerCapture(e.pointerId)
-          const p = point(e)
-          const currentTool = useInk.getState().tool
+          try { paper.current?.setPointerCapture(e.pointerId) } catch { /* WebKit may refuse capture. */ }
+          activePointer.current = e.pointerId
+          const p = point(e, pencil)
+          const currentTool = pencil && e.button === 5 ? 'erase' : useInk.getState().tool
+          pointerTool.current = currentTool
           if (currentTool === 'select') {
             const hit = (e.target as Element).closest?.('[data-document-stroke]')?.getAttribute('data-document-stroke') ?? hitStroke(p)
             if (!hit) {
@@ -215,30 +233,51 @@ export function DocumentCanvasCard({ card }: { card: Card }) {
               ids,
               original: new Map(doc.strokes.filter((stroke) => ids.includes(stroke.id)).map((stroke) => [stroke.id, stroke.points.map((point) => ({ ...point }))])),
             }
-          } else if (currentTool === 'text') placeText(p)
+          } else if (currentTool === 'text') {
+            activePointer.current = null
+            placeText(p)
+          }
           else if (currentTool === 'erase') eraseAt(p)
           else setActive({ kind: currentTool, points: [p] })
         }}
         onPointerMove={(e) => {
-          if (!(e.buttons & 1) || !drawingHere) return
-          const p = point(e)
-          if (tool === 'select') moveSelectedStrokes(p)
-          else if (tool === 'erase') eraseAt(p)
+          if (useInk.getState().penMode && e.pointerType !== 'pen') return
+          const drawingActive = useInk.getState().pen && useInk.getState().documentId === card.id
+          if (activePointer.current !== e.pointerId || !(e.buttons & 1) || !drawingActive) return
+          if (e.pointerType === 'pen' && e.cancelable) e.preventDefault()
+          const samples = pointerSamples(e.nativeEvent)
+          const points = samples.map((sample) => point(sample, e.pointerType === 'pen'))
+          const p = points[points.length - 1]
+          const currentTool = pointerTool.current ?? tool
+          if (currentTool === 'select') moveSelectedStrokes(p)
+          else if (currentTool === 'erase') points.forEach(eraseAt)
           else setActive((stroke) => stroke
-            ? { ...stroke, points: stroke.kind === 'draw' ? [...stroke.points, p] : [stroke.points[0], p] }
+            ? { ...stroke, points: stroke.kind === 'draw' ? [...stroke.points, ...points] : [stroke.points[0], p] }
             : stroke)
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
+          if (activePointer.current !== e.pointerId) return
+          if (e.pointerType === 'pen' && e.cancelable) e.preventDefault()
+          try { if (paper.current?.hasPointerCapture(e.pointerId)) paper.current.releasePointerCapture(e.pointerId) } catch { /* already released */ }
           if (active && active.points.length > 1) {
             save(doc.text, [...doc.strokes, {
               id: 'ds' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
               kind: active.kind, points: active.points,
             }])
           }
+          activePointer.current = null
+          pointerTool.current = null
           moving.current = null
           setActive(null)
         }}
-        onPointerCancel={() => { moving.current = null; setActive(null) }}>
+        onPointerCancel={(e) => {
+          if (activePointer.current !== e.pointerId) return
+          try { if (paper.current?.hasPointerCapture(e.pointerId)) paper.current.releasePointerCapture(e.pointerId) } catch { /* already released */ }
+          activePointer.current = null
+          pointerTool.current = null
+          moving.current = null
+          setActive(null)
+        }}>
         <textarea value={doc.text} aria-label="Document text"
           placeholder={drawingHere ? '' : 'Type notes, or use the document pen for handwriting and equations…'}
           onPointerDown={(e) => { if (!e.shiftKey) e.stopPropagation() }}
