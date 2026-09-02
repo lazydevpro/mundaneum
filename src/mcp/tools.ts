@@ -8,6 +8,7 @@ import { serviceBase } from '../agents/config'
 import { enrichCard } from '../embed/unfurl'
 import { callTool, defineTool, getTool } from './registry'
 import { canvasDocumentForAgent, documentImageContent, drawingSelectionImageContent } from '../docCanvas'
+import { boardPngContent } from '../boardSnapshot'
 
 /** Common `agent` property — every contribution is signed by WHICH agent. */
 const agentProp = {
@@ -258,6 +259,10 @@ export function registerBoardTools(): void {
             }
           : {}),
         board: s.boardName,
+        whole_board_image_tool: {
+          name: 'get_board_image',
+          use_when: 'Use this to inspect handwriting, equations, freehand drawings, or the spatial layout as one image.',
+        },
         the_rule:
           'You may contribute anything except position. Add cards, link them, label clusters, merge duplicates, ask for help — the page computes all layout.',
         counts: {
@@ -325,6 +330,34 @@ export function registerBoardTools(): void {
         return JSON.stringify({ content })
       }
       return JSON.stringify(payload)
+    },
+  })
+
+  // ---------------------------------------------------------- get_board_image
+  defineTool({
+    name: 'get_board_image',
+    title: 'View the whole board',
+    description:
+      'Return a PNG screenshot of the entire board, including cards, links, document canvases, annotations, and the direct drawing layer. Use this when spatial context, handwriting, equations, or freehand drawings matter.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
+    execute: async () => {
+      const state = useBoard.getState()
+      const image = await boardPngContent(state)
+      return JSON.stringify({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              board: state.boardName,
+              cards: liveCards(state.cards).length,
+              drawings: state.strokes.length,
+              note: 'Whole-board PNG screenshot. Direct drawing text and ink are rendered in their board positions.',
+            }),
+          },
+          { type: 'image', ...image },
+        ],
+      })
     },
   })
 

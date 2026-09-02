@@ -5,6 +5,7 @@ import { ingestFiles } from '../capture/ingest'
 import { seedDemo } from '../demo/seed'
 import { useInk } from './ink'
 import { Icon } from './icons'
+import { boardPngDataUrl } from '../boardSnapshot'
 
 /**
  * The one button. Everything else you can already do by pasting, dropping,
@@ -27,13 +28,14 @@ const ITEMS: Item[] = [
   { key: 'file', label: 'file', hint: 'or drop it' },
   { key: 'draw', label: 'draw', hint: 'ink + shapes' },
   { key: 'phone', label: 'phone camera' },
+  { key: 'screenshot', label: 'board image', hint: 'whole page', always: true },
   { key: 'organize', label: 'organize', hint: 'the page decides', always: true },
 ]
 
 const STACKS: Record<string, string[]> = {
-  everything: ['note', 'canvas-doc', 'file', 'draw', 'phone', 'organize'],
-  researcher: ['note', 'canvas-doc', 'file', 'phone', 'organize'],
-  whiteboard: ['note', 'canvas-doc', 'draw', 'organize'],
+  everything: ['note', 'canvas-doc', 'file', 'draw', 'phone', 'screenshot', 'organize'],
+  researcher: ['note', 'canvas-doc', 'file', 'phone', 'screenshot', 'organize'],
+  whiteboard: ['note', 'canvas-doc', 'draw', 'screenshot', 'organize'],
 }
 
 function loadStack(): string[] {
@@ -91,6 +93,16 @@ export function PlusMenu({ openModal }: { openModal: (m: ModalKind) => void }) {
       case 'phone':
         openModal('qr')
         return
+      case 'screenshot': {
+        const state = useBoard.getState()
+        void boardPngDataUrl(state).then((href) => {
+          const anchor = document.createElement('a')
+          anchor.href = href
+          anchor.download = (state.boardName || 'mundaneum-board').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase() + '.png'
+          anchor.click()
+        })
+        return
+      }
       case 'organize':
         void organize()
         return

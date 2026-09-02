@@ -55,6 +55,7 @@ Agents get back a compressed structural summary, never the raw board.
 | Tool | Purpose | Annotations |
 |---|---|---|
 | `get_board` | One rich structural read: selected cards first (including native images for selected document canvases), then clusters, excerpts, links, orphans, open requests, and pending review. | `readOnlyHint`, `untrustedContentHint` |
+| `get_board_image` | Return the entire board as one native visual image, including cards, links, document canvases, annotations, and direct ink/text drawings. | `readOnlyHint`, `untrustedContentHint` |
 | `get_canvas_document` | Return an expandable document canvas as one native image so vision models read typed text, handwriting, shapes, equations, and layout together. Documents reuse the board pen, shape, arrow, eraser, and undo tools. | `readOnlyHint`, `untrustedContentHint` |
 | `add_cards` | Batch contribution — text, links, images, or a whole HTML widget. Lands **provisional** (dashed) until the human accepts. | `untrustedContentHint` |
 | `ask_region` | Scoped question: returns only one cluster's / the lasso selection's cards. | `readOnlyHint`, `untrustedContentHint` |
@@ -125,7 +126,7 @@ standing by to serve handoffs.
   session, no SSE) and runs *inside* the board's Durable Object, which is
   single-threaded, so each tool call is an atomic read-modify-write.
 
-  Ten of the tools live there: `get_board`, `get_canvas_document`, `add_cards`, `link_cards`,
+  Eleven of the tools live there: `get_board`, `get_board_image`, `get_canvas_document`, `add_cards`, `link_cards`,
   `group_cards`, `ask_region`, `annotate_cards`, `draw_sketch`,
   `set_arrangement`, `request_help`. The ones that need the page's engine —
   clustering by embedding, near-duplicate detection — are deliberately

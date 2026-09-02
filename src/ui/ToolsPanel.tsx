@@ -14,6 +14,7 @@ import { Icon } from './icons'
  */
 
 const TRY_ASKING = [
+  '"Show me the whole board as an image."',
   '"Organize this board."',
   '"Group the pricing cards and name the clusters."',
   '"Add a widget that charts the equipment costs."',

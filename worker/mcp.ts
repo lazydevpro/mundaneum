@@ -1,6 +1,7 @@
 import type { SyncDoc } from '../src/sync/doc'
 import type { CanvasDocument } from '../src/types'
 import { documentImageContent } from '../src/docCanvas'
+import { boardImageContent } from '../src/boardSnapshot'
 
 /**
  * Classic MCP over Streamable HTTP, so anything that speaks MCP — Claude
@@ -42,6 +43,13 @@ export const MCP_TOOLS = [
         group: { type: 'string', description: 'Optional: full detail for one named group.' },
       },
     },
+  },
+  {
+    name: 'get_board_image',
+    title: 'View the whole board',
+    description:
+      'Return the entire shared board as one native image, including cards, links, document canvases, annotations, and direct ink or text drawings.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'get_canvas_document',
@@ -334,6 +342,10 @@ export function callBoardTool(
       return {
         text: JSON.stringify({
           board: doc.boardName,
+          whole_board_image_tool: {
+            name: 'get_board_image',
+            use_when: 'Use this to inspect handwriting, equations, freehand drawings, or the spatial layout as one image.',
+          },
           how_this_works:
             'You contribute meaning; the board computes every position. Clustering and layout happen in the open page, so groups you declare here appear there on its next sync.',
           counts: {
@@ -385,6 +397,21 @@ export function callBoardTool(
           { type: 'text', text: JSON.stringify({ id, title: card.title ?? null, typed_text: document.text }) },
           { type: 'image', ...image },
         ],
+        changed: false,
+      }
+    }
+
+    case 'get_board_image': {
+      const image = boardImageContent(doc)
+      const summary = JSON.stringify({
+        board: doc.boardName,
+        cards: Object.values(cards).filter((card) => !card.mergedInto).length,
+        drawings: doc.strokes.length,
+        note: 'Whole-board visual snapshot including the direct drawing layer.',
+      })
+      return {
+        text: summary,
+        content: [{ type: 'text', text: summary }, { type: 'image', ...image }],
         changed: false,
       }
     }
